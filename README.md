@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Python Slack Healthcheck Bot
 
-## Getting Started
+A Python-based Slack bot that posts daily healthcheck prompts to a specified channel.
 
-First, run the development server:
+## Features
 
+- Sends daily healthcheck messages at 9:00 AM
+- Interactive buttons for team members to respond
+- Easy configuration through environment variables
+
+## Setup
+
+1. Install dependencies:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pip install -r requirements.txt
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Configure environment variables:
+- Create a `.env` file with the following variables:
+  ```
+  SLACK_BOT_TOKEN=xoxb-your-bot-token
+  SLACK_CHANNEL_ID=C0123456789
+  ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Run the bot:
+```bash
+python slack_healthcheck_bot.py
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+- `SLACK_BOT_TOKEN`: Your Slack Bot User OAuth Token
+- `SLACK_CHANNEL_ID`: The ID of the channel where the bot will post messages
 
-To learn more about Next.js, take a look at the following resources:
+## Requirements
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Python 3.7+
+- slack-sdk
+- python-dotenv
+- schedule
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Getting Started with Slack
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app
+2. Add the following bot token scopes:
+   - `chat:write`
+   - `chat:write.public`
+   - `reactions:write`
+3. Install the app to your workspace
+4. Copy the bot token and channel ID to your `.env` file
