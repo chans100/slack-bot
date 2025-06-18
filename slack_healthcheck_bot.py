@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 
 # Load environment variables
-load_dotenv()
+load_dotenv("token.env")
 
 app = Flask(__name__)
 
@@ -85,8 +85,9 @@ class SlackHealthcheckBot:
             user = payload['user']['id']
             action = payload['actions'][0]['value']
             message_ts = payload['message']['ts']
+            channel = payload['channel']['id']
             
-            print(f"User {user} clicked {action}")  # Debug log
+            print(f"User {user} clicked {action} in channel {channel}")  # Debug log
             
             # Create response message
             responses = {
@@ -97,7 +98,7 @@ class SlackHealthcheckBot:
             
             # Send a response message
             response = self.client.chat_postMessage(
-                channel=self.channel_id,
+                channel=channel,
                 thread_ts=message_ts,
                 text=responses.get(action, 'Thanks for your response!')
             )
@@ -113,6 +114,28 @@ class SlackHealthcheckBot:
             print(f"Unexpected error: {str(e)}")  # Debug log
             return jsonify({"text": "Sorry, something went wrong!"}), 500
 
+    def send_standup_message(self):
+        try:
+            message = {
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "Good morning team! 🌞 Time for the daily standup!\nPlease reply to this thread with:\n\n1. What did you do today?\n2. Are you on track to meet your goals? (Yes/No)\n3. Any blockers?\n <!channel> please respond by 4:30 M Let's stay aligned! 💬"
+                        }
+                    }
+                ]  
+            }
+            response = self.client.chat_postMessage(
+                channel=self.channel_id,
+                blocks=message["blocks"],
+                text="Daily Standup"
+            )
+            print(f"Standup message sent successfully: {response['ts']}")
+        except SlackApiError as e:
+            print(f"Error sending standup message: {e.response['error']}")
+# Initialize the bot
 bot = SlackHealthcheckBot()
 
 @app.route('/slack/events', methods=['POST'])
@@ -135,6 +158,7 @@ def handle_events():
     
     # Handle button clicks
     if payload.get('type') == 'block_actions':
+        print("Processing block_actions event")  # Debug log
         return bot.handle_button_click(payload)
     
     return jsonify({"text": "OK"})
