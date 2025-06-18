@@ -72,7 +72,6 @@ class SlackHealthcheckBot:
                 blocks=message["blocks"],
                 text="Daily Health Check"  # Adding fallback text
             )
-            print(f"Message sent successfully: {response['ts']}")
             
         except SlackApiError as e:
             print(f"Error sending message: {e.response['error']}")
@@ -102,7 +101,6 @@ class SlackHealthcheckBot:
                 thread_ts=message_ts,
                 text=responses.get(action, 'Thanks for your response!')
             )
-            print(f"Response sent successfully: {response['ts']}")  # Debug log
             
             # Acknowledge the action
             return jsonify({"text": "Thanks for your response!"})
@@ -122,19 +120,60 @@ class SlackHealthcheckBot:
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": "Good morning team! 🌞 Time for the daily standup!\nPlease reply to this thread with:\n\n1. What did you do today?\n2. Are you on track to meet your goals? (Yes/No)\n3. Any blockers?\n <!channel> please respond by 4:30 M Let's stay aligned! 💬"
+                            "text": "Good morning team! 🌞 Time for the daily standup!\nPlease reply to this thread with:\n\n1. What did you do today?\n2. Are you on track to meet your goals? (Yes/No)\n3. Any blockers?\n <!channel> please respond by 4:30 PM. Let's stay aligned! 💬"
                         }
                     }
                 ]  
             }
-            response = self.client.chat_postMessage(
+            global stdresponse; stdresponse = self.client.chat_postMessage(
                 channel=self.channel_id,
                 blocks=message["blocks"],
                 text="Daily Standup"
             )
-            print(f"Standup message sent successfully: {response['ts']}")
+            print(f"Standup message sent successfully: {stdresponse['ts']}")
+            return jsonify({"text": "Sorry, something went wrong!"}), 500
         except SlackApiError as e:
             print(f"Error sending standup message: {e.response['error']}")
+            return jsonify({"text": "Sorry, something went wrong!"}), 500
+
+    def handle_standup_thread_reply(self, payload):
+        try:
+            # Check if this is a thread reply
+            if 'thread_ts' in payload:
+                message_ts = payload['thread_ts']
+                user = payload['user']
+                text = payload['text']
+                channel = payload['channel']
+                
+                
+                # if message_ts == self.stdresponse['ts']: 
+                if "On Track: Yes" in text and "Blockers: None" in text:
+                    try: 
+                        message = {
+                            "blocks": [
+                                {
+                                    "type": "section",
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": f"🎉 Great job, <@{user}>! Keep up the good work! 🎉"
+                                    }
+                                }
+                            ]
+                        }
+                        threadresponse = self.client.chat_postMessage(
+                            channel=channel,
+                            thread_ts=message_ts,
+                            blocks=message["blocks"],
+                        )
+                        print(f"Thread response sent successfully: {threadresponse['thread_ts']}")
+                    except SlackApiError as e:
+                        print(f"Error sending thread response: {e.response['error']}")
+                return jsonify({"text": "Reply received!"})
+            return jsonify({"text": "Not a thread reply"})
+        except Exception as e:
+            print(f"Error handling thread reply: {str(e)}")
+            return jsonify({"text": "Sorry, something went wrong!"}), 500
+
 # Initialize the bot
 bot = SlackHealthcheckBot()
 
@@ -149,33 +188,35 @@ def handle_events():
         if 'payload' in payload:
             import json
             payload = json.loads(payload['payload'])
-    
-    print("Received event:", payload)  # Debug log
-    
+        
     # Handle URL verification
     if payload.get('type') == 'url_verification':
         return jsonify({"challenge": payload['challenge']})
     
     # Handle button clicks
     if payload.get('type') == 'block_actions':
-        print("Processing block_actions event")  # Debug log
         return bot.handle_button_click(payload)
+    
+    # Handle actual events
+    if payload.get("type") == "event_callback":
+        event = payload.get("event", {})
+        
+        # Check if it's a message in a thread
+        if event.get("type") == "message" and event.get("thread_ts") ==  stdresponse['ts']:
+            return bot.handle_standup_thread_reply(event)
     
     return jsonify({"text": "OK"})
 
 def run_scheduler():
     # Schedule the healthcheck message to be sent every day at 9:00 AM
     schedule.every().day.at("09:00").do(bot.send_healthcheck_message)
+    schedule.every().day.at("16:00").do(bot.send_standup_message)
     
     while True:
         schedule.run_pending()
         time.sleep(60)
 
 if __name__ == "__main__":
-    # Send initial test message
-    print("Sending test message...")
-    bot.send_healthcheck_message()
-    
     # Start the scheduler in a separate thread
     import threading
     scheduler_thread = threading.Thread(target=run_scheduler)
