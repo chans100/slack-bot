@@ -1,4 +1,6 @@
+import sys
 import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import time
 import schedule
 import re
@@ -8,6 +10,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from flask import Flask, request, jsonify
 from config import BotConfig
+from mongodb_service import MongoDBService
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -40,6 +43,9 @@ class DailyStandupBot:
         self.active_standups = {}  # {message_ts: {timestamp, responses: {}}}
         self.user_responses = {}   # {user_id: {message_ts, response_data}}
         self.quick_responses = {}  # {user_id: {standup_ts, quick_status}}
+        
+        # Add MongoDB service
+        self.mongodb = MongoDBService()
         
     def send_daily_standup(self):
         """Send the daily standup prompt message with hybrid interaction options."""
@@ -245,6 +251,18 @@ class DailyStandupBot:
                 'timestamp': datetime.now(),
                 'user_name': user_name
             }
+
+            print("📝 Attempting to store standup response in MongoDB")
+            self.mongodb.store_response(
+                user_id=user_id,
+                username=user_name,
+                response_type='standup',
+                channel_id=self.channel_id,
+                message_ts=message_ts,
+                thread_ts=thread_ts,
+                text=text
+            )
+            print("✅ Standup response stored in MongoDB")
             
             # Determine next action based on response
             if parsed['on_track'] == 'yes' and not parsed['has_blockers']:
@@ -416,6 +434,113 @@ class DailyStandupBot:
         except SlackApiError as e:
             print(f"Error checking missing responses: {e.response['error']}")
 
+    def send_healthcheck_message(self):
+        try:
+            message = {
+                "channel": self.channel_id,
+                "text": "Daily Health Check",
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": ":wave: *Daily Health Check*\nHow are you feeling today?"
+                        }
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": ":blush: Great",
+                                    "emoji": True
+                                },
+                                "value": "great",
+                                "action_id": "great"
+                            },
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": ":neutral_face: Okay",
+                                    "emoji": True
+                                },
+                                "value": "okay",
+                                "action_id": "okay"
+                            },
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": ":pensive: Not Great",
+                                    "emoji": True
+                                },
+                                "value": "not_great",
+                                "action_id": "not_great"
+                            }
+                        ]
+                    }
+                ]
+            }
+            response = self.client.chat_postMessage(**message)
+            print(f"Message sent successfully: {response['ts']}")
+            return response['ts']
+        except SlackApiError as e:
+            print(f"Error sending message: {e.response['error']}")
+            return None
+
+    def send_standup_message(self):
+        try:
+            message = {
+                "channel": self.channel_id,
+                "text": "Daily Standup",
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "Good morning team! :sun_with_face: Time for the daily standup!\nPlease reply to this thread with:\n\n1. What did you do today?\n2. Are you on track to meet your goals? (Yes/No)\n3. Any blockers?\n <!channel> please respond by 4:30 PM. Let's stay aligned! :speech_balloon:"
+                        }
+                    }
+                ]
+            }
+            response = self.client.chat_postMessage(**message)
+            print(f"Standup message sent successfully: {response['ts']}")
+            return response['ts']
+        except SlackApiError as e:
+            print(f"Error sending standup message: {e.response['error']}")
+            return None
+
+    def handle_button_click(self, payload):
+        try:
+            print("Received button click payload:", payload)
+            user = payload['user']['id']
+            username = payload['user'].get('name', payload['user'].get('username', 'Unknown'))
+            action = payload['actions'][0]['value']
+            message_ts = payload['message']['ts']
+            channel_id = payload['channel']['id']
+            print(f"User {username} ({user}) clicked {action}")
+            self.mongodb.store_response(user, username, action, channel_id, message_ts)
+            # Send response in thread
+            responses = {
+                'great': '😊 Great to hear you\'re doing well!',
+                'okay': '😐 Thanks for letting us know. Hope things get better!',
+                'not_great': '😔 Sorry to hear that. Is there anything we can do to help?'
+            }
+            response_text = responses.get(action, 'Thanks for your response!')
+            thread_response = self.client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=message_ts,
+                text=response_text
+            )
+            print(f"Response sent successfully: {thread_response['ts']}")
+            return "", 200
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return "", 200
+
 # Initialize bot
 bot = DailyStandupBot()
 
@@ -438,11 +563,19 @@ def handle_events():
         if payload.get('type') == 'url_verification':
             return jsonify({"challenge": payload['challenge']})
         
+        # Handle button clicks
+        if payload.get('type') == 'block_actions':
+            return bot.handle_button_click(payload)
+        
         # Handle message events (standup responses)
         if payload.get('type') == 'event_callback':
             event = payload['event']
             
             if event['type'] == 'message' and 'thread_ts' in event:
+                # Skip bot messages to prevent processing our own messages
+                if 'bot_id' in event or event.get('user') == 'U0912DJRNSF':  # bot user ID
+                    return jsonify({'status': 'ok'})
+                
                 # This is a reply in a thread (standup response)
                 bot.handle_standup_response(
                     user_id=event['user'],
@@ -497,9 +630,11 @@ if __name__ == "__main__":
     print(f"⏰ Reminder time: {BotConfig.REMINDER_TIME}")
     print("🔄 Hybrid workflow: Reactions + Thread replies")
     
-    # Send initial test message
+    # Send initial test messages
+    print("📤 Sending test health check message...")
+    bot.send_healthcheck_message()
     print("📤 Sending test standup message...")
-    bot.send_daily_standup()
+    bot.send_standup_message()
     
     # Start the scheduler in a separate thread
     import threading

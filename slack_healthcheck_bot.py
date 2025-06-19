@@ -12,6 +12,7 @@ import hmac
 import hashlib
 import base64
 from pymongo import MongoClient
+from mongodb_service import MongoDBService
 
 # Load environment variables
 load_dotenv(".env")
@@ -21,90 +22,6 @@ CORS(app)  # Enable CORS for all routes
 
 # Slack signing secret for request verification
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
-
-class MongoDBService:
-    def __init__(self):
-        self.client = None
-        self.db = None
-        self.connect()
-    
-    def connect(self):
-        """Connect to MongoDB"""
-        try:
-            # Get MongoDB connection string from environment
-            mongo_uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/")
-            self.client = MongoClient(mongo_uri)
-            self.db = self.client.healthcheck_bot
-            print("✅ Successfully connected to MongoDB")
-        except Exception as e:
-            print(f"❌ Failed to connect to MongoDB: {e}")
-            self.client = None
-            self.db = None
-    
-    def store_response(self, user_id, username, response_type, channel_id, message_ts, thread_ts=None):
-        """Store a user response in MongoDB"""
-        if self.db is None:
-            print("❌ MongoDB not connected")
-            return False
-        
-        try:
-            response_data = {
-                "user_id": user_id,
-                "username": username,
-                "response_type": response_type,
-                "channel_id": channel_id,
-                "message_ts": message_ts,
-                "thread_ts": thread_ts,
-                "timestamp": datetime.utcnow(),
-                "date": datetime.utcnow().strftime("%Y-%m-%d")
-            }
-            
-            result = self.db.responses.insert_one(response_data)
-            print(f"✅ Response stored with ID: {result.inserted_id}")
-            return True
-        except Exception as e:
-            print(f"❌ Failed to store response: {e}")
-            return False
-    
-    def get_daily_responses(self, date=None):
-        """Get all responses for a specific date"""
-        if self.db is None:
-            return []
-        
-        if not date:
-            date = datetime.utcnow().strftime("%Y-%m-%d")
-        
-        try:
-            responses = list(self.db.responses.find({"date": date}))
-            return responses
-        except Exception as e:
-            print(f"❌ Failed to get daily responses: {e}")
-            return []
-    
-    def get_daily_summary(self, date=None):
-        """Get a summary of responses for a specific date"""
-        if self.db is None:
-            return []
-        
-        if not date:
-            date = datetime.utcnow().strftime("%Y-%m-%d")
-        
-        try:
-            pipeline = [
-                {"$match": {"date": date}},
-                {"$group": {
-                    "_id": "$response_type",
-                    "count": {"$sum": 1},
-                    "users": {"$addToSet": "$username"}
-                }},
-                {"$sort": {"count": -1}}
-            ]
-            
-            summary = list(self.db.responses.aggregate(pipeline))
-            return summary
-        except Exception as e:
-            print(f"❌ Failed to get daily summary: {e}")
-            return []
 
 def verify_slack_request(request):
     """Verify that the request is from Slack"""
