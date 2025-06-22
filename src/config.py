@@ -6,7 +6,8 @@ Modify these settings to customize the bot behavior.
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load environment variables from .env
+load_dotenv('.env')
 
 class BotConfig:
     """Configuration class for the Daily Standup Bot."""
@@ -17,9 +18,9 @@ class BotConfig:
     SLACK_ESCALATION_CHANNEL = os.environ.get("SLACK_ESCALATION_CHANNEL", "leads")
     
     # Timing Configuration
-    STANDUP_TIME = os.environ.get("STANDUP_TIME", "09:00")
-    RESPONSE_DEADLINE = os.environ.get("RESPONSE_DEADLINE", "10:00")
-    REMINDER_TIME = os.environ.get("REMINDER_TIME", "09:30")
+    STANDUP_TIME = "10:00"  # 10 AM EST
+    RESPONSE_DEADLINE = "16:00"  # 4 PM EST
+    REMINDER_TIME = "10:00"  # 10 AM EST
     
     # Workflow Configuration
     ESCALATION_EMOJI = os.environ.get("ESCALATION_EMOJI", "🆘")
@@ -102,9 +103,18 @@ React with one of the following:
     def get_config_dict(cls):
         """Get configuration as a dictionary for easy access."""
         return {
+            'slack_bot_token': cls.SLACK_BOT_TOKEN,
+            'slack_channel_id': cls.SLACK_CHANNEL_ID,
+            'escalation_channel': cls.SLACK_ESCALATION_CHANNEL,
+            'mongodb_uri': os.environ.get("MONGODB_URI"),
+            'mongodb_db_name': os.environ.get("MONGODB_DB_NAME"),
             'standup_time': cls.STANDUP_TIME,
+            'reminder_time': cls.REMINDER_TIME,
             'response_deadline': cls.RESPONSE_DEADLINE,
             'escalation_emoji': cls.ESCALATION_EMOJI,
             'monitor_emoji': cls.MONITOR_EMOJI,
             'auto_escalation_delay_hours': cls.AUTO_ESCALATION_DELAY_HOURS,
+            'flask_host': cls.FLASK_HOST,
+            'flask_port': cls.FLASK_PORT,
+            'flask_debug': cls.FLASK_DEBUG,
         } 
