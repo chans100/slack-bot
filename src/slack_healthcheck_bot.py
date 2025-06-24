@@ -391,6 +391,13 @@ class DailyStandupBot:
                 text=f"Follow-up for <@{user_id}> - React for help options"
             )
             
+            # Store followup message in MongoDB
+            try:
+                self.mongodb.store_followup_sent(user_id, thread_ts, response['ts'])
+                print(f"✅ Followup message saved to MongoDB: {response['ts']}")
+            except Exception as e:
+                print(f"❌ Error saving followup to MongoDB: {e}")
+            
             # Store user data for button handling
             self.user_responses[user_id] = {
                 'followup_ts': response['ts'],
