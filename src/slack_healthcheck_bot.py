@@ -226,23 +226,13 @@ class DailyStandupBot:
             print(f"Error sending help followup: {e.response['error']}")
     
     def parse_standup_response(self, text):
-        """Parse standup response text to extract structured data."""
-        lines = text.strip().split('\n')
+        """Parse standup response text: 1st line = today, 2nd = on_track, 3rd = blockers."""
+        lines = [l.strip().lower() for l in text.strip().split('\n') if l.strip()]
         parsed = {
-            'today': '',
-            'on_track': '',
-            'blockers': ''
+            'today': lines[0] if len(lines) > 0 else '',
+            'on_track': lines[1] if len(lines) > 1 else '',
+            'blockers': lines[2] if len(lines) > 2 else ''
         }
-        
-        for i, line in enumerate(lines):
-            line = line.strip().lower()
-            if i == 0:  # First line is usually "today"
-                parsed['today'] = line
-            elif 'track' in line or line in ['yes', 'no']:
-                parsed['on_track'] = line
-            elif 'blocker' in line or line in ['yes', 'no', 'none']:
-                parsed['blockers'] = line
-        
         return parsed
 
     def handle_standup_response(self, user_id, message_ts, thread_ts, text):
