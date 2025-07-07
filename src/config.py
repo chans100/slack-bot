@@ -12,6 +12,9 @@ load_dotenv('.env')
 class BotConfig:
     """Configuration class for the Daily Standup Bot."""
     
+    # AI Configuration
+    MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY") or os.environ.get("Mistral_Api")
+    
     # Slack Configuration
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
     SLACK_CHANNEL_ID = os.environ.get("SLACK_CHANNEL_ID")
@@ -97,12 +100,17 @@ React with one of the following:
         if missing_vars:
             raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
         
+        # Check if Mistral API key is available (optional but recommended)
+        if not cls.MISTRAL_API_KEY:
+            print("⚠️ Warning: MISTRAL_API_KEY not found. AI features will be limited.")
+        
         return True
     
     @classmethod
     def get_config_dict(cls):
         """Get configuration as a dictionary for easy access."""
         return {
+            'mistral_api_key': cls.MISTRAL_API_KEY,
             'slack_bot_token': cls.SLACK_BOT_TOKEN,
             'slack_channel_id': cls.SLACK_CHANNEL_ID,
             'escalation_channel': cls.SLACK_ESCALATION_CHANNEL,

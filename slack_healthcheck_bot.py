@@ -13,6 +13,7 @@ import hashlib
 import base64
 from pymongo import MongoClient
 from mongodb_service import MongoDBService
+import requests  # Add this import for Coda API integration
 
 # Load environment variables from .env
 load_dotenv(".env")
@@ -34,7 +35,12 @@ def verify_slack_request(request):
         signature = request.headers.get('X-Slack-Signature', '')
         timestamp = request.headers.get('X-Slack-Request-Timestamp', '')
         
+        print(f"DEBUG: Signature: {signature}")
+        print(f"DEBUG: Timestamp: {timestamp}")
+        print(f"DEBUG: Signing secret configured: {bool(SLACK_SIGNING_SECRET)}")
+        
         if not signature or not timestamp:
+            print("DEBUG: Missing signature or timestamp")
             return False
         
         # Get the request body
@@ -50,7 +56,13 @@ def verify_slack_request(request):
             hashlib.sha256
         ).hexdigest()
         
-        return hmac.compare_digest(signature, expected_signature)
+        print(f"DEBUG: Expected signature: {expected_signature}")
+        print(f"DEBUG: Received signature: {signature}")
+        
+        result = hmac.compare_digest(signature, expected_signature)
+        print(f"DEBUG: Signature verification result: {result}")
+        
+        return result
     except Exception as e:
         print(f"Error verifying request: {e}")
         return False
@@ -203,9 +215,37 @@ class SlackHealthcheckBot:
             # Store the response in MongoDB
             self.mongodb.store_response(user, username, action, channel_id, message_ts)
             
+            # Log the check-in to Coda
+            coda_api_token = os.environ.get('CODA_API_TOKEN')
+            coda_doc_id = os.environ.get('CODA_DOC_ID')
+            coda_table_id = os.environ.get('CODA_TABLE_ID')
+            coda_url = f"https://coda.io/apis/v1/docs/{coda_doc_id}/tables/{coda_table_id}/rows"
+            coda_headers = {
+                'Authorization': f'Bearer {coda_api_token}',
+                'Content-Type': 'application/json'
+            }
+            coda_payload = {
+                'rows': [
+                    {
+                        'cells': [
+                            {'column': 'UserID', 'value': user},
+                            {'column': 'Response', 'value': action},
+                            {'column': 'Timestamp', 'value': datetime.utcnow().isoformat()}
+                        ]
+                    }
+                ]
+            }
+            try:
+                coda_response = requests.post(coda_url, headers=coda_headers, json=coda_payload)
+                if coda_response.status_code != 202:
+                    print(f"Error logging to Coda: {coda_response.status_code} {coda_response.text}")
+            except Exception as coda_err:
+                print(f"Exception logging to Coda: {coda_err}")
+            
             # ACKNOWLEDGE IMMEDIATELY (within 3 seconds)
             # Return proper Slack acknowledgment first
-            response = "", 200
+            from flask import jsonify
+            response = jsonify({"text": "OK"}), 200
             
             # Then send the response message asynchronously
             def send_response_async():
@@ -214,7 +254,9 @@ class SlackHealthcheckBot:
                     responses = {
                         'great': '😊 Great to hear you\'re doing well!',
                         'okay': '😐 Thanks for letting us know. Hope things get better!',
-                        'not_great': '😔 Sorry to hear that. Is there anything we can do to help?'
+                        'not_great': '😔 Sorry to hear that. Is there anything we can do to help?',
+                        'need_help_now': '🚨 I\'ll alert the team that you need immediate help!',
+                        'can_wait': '⏰ Got it! I\'ll keep the team informed but no rush.'
                     }
                     
                     response_text = responses.get(action, 'Thanks for your response!')
@@ -238,7 +280,8 @@ class SlackHealthcheckBot:
             return response
         except Exception as e:
             print(f"Unexpected error: {e}")
-            return "", 200
+            from flask import jsonify
+            return jsonify({"text": "OK"}), 200
     
     def get_daily_report(self, date=None):
         """Generate and send a daily report of responses"""
@@ -298,7 +341,8 @@ class SlackHealthcheckBot:
             # Check if this message has already been processed
             if self.mongodb.check_message_processed(message_ts):
                 print(f"Message {message_ts} already processed, ignoring")
-                return "", 200
+                from flask import jsonify
+                return jsonify({"text": "OK"}), 200
             
             # Mark this message as processed immediately to prevent duplicates
             self.mongodb.mark_message_processed(message_ts, user, thread_ts)
@@ -306,22 +350,27 @@ class SlackHealthcheckBot:
             # Ignore bot's own messages
             if user == bot_user_id:
                 print(f"Ignoring bot's own message")
-                return "", 200
+                from flask import jsonify
+                return jsonify({"text": "OK"}), 200
             
             # Only respond to messages that are in a thread (replies to standup)
             if thread_ts == message_ts:
                 print(f"Ignoring message from {username} - not in a thread")
-                return "", 200
+                from flask import jsonify
+                return jsonify({"text": "OK"}), 200
             
-            # Only respond to messages in the standup channel
-            if channel_id != self.channel_id:
-                print(f"Ignoring message from {username} - not in standup channel")
-                return "", 200
+            # Check if this is a DM response (since we're sending standup prompts to DMs now)
+            is_dm = channel_id.startswith('D')
+            if not is_dm:
+                print(f"Ignoring message from {username} - not in DM (channel: {channel_id})")
+                from flask import jsonify
+                return jsonify({"text": "OK"}), 200
             
             # Ignore bot messages to prevent self-replies
             if self.is_bot_message(event):
                 print(f"Ignoring bot message")
-                return "", 200
+                from flask import jsonify
+                return jsonify({"text": "OK"}), 200
             
             # Rate limiting: prevent multiple responses to same user within 30 seconds
             current_time = time.time()
@@ -329,11 +378,27 @@ class SlackHealthcheckBot:
                 time_diff = current_time - self.recent_responses[user]
                 if time_diff < 30:  # 30 seconds
                     print(f"Ignoring message from {username} - rate limited (last response {time_diff:.1f}s ago)")
-                    return "", 200
+                    from flask import jsonify
+                    return jsonify({"text": "OK"}), 200
             
             # Check if user indicated they're not on track or has blockers
-            not_on_track = any(phrase in message_text for phrase in ['no', 'not on track', 'behind', 'off track'])
-            has_blockers = any(phrase in message_text for phrase in ['blocker', 'blocked', 'stuck', 'issue', 'problem'])
+            message_text = event.get('text', '').lower()
+            
+            # More comprehensive detection for not being on track
+            not_on_track_phrases = [
+                'no', 'not on track', 'not on', 'behind', 'off track', 'off', 
+                'not track', 'not meeting', 'not going well', 'struggling',
+                'falling behind', 'behind schedule', 'delayed', 'late'
+            ]
+            not_on_track = any(phrase in message_text for phrase in not_on_track_phrases)
+            
+            # More comprehensive detection for blockers
+            blocker_phrases = [
+                'blocker', 'blocked', 'stuck', 'issue', 'problem', 'yes i have',
+                'have blocker', 'need help', 'help', 'trouble', 'difficulty',
+                'challenge', 'obstacle', 'impediment', 'barrier'
+            ]
+            has_blockers = any(phrase in message_text for phrase in blocker_phrases)
             
             print(f"Analysis for {username}: not_on_track={not_on_track}, has_blockers={has_blockers}")
             
@@ -342,33 +407,58 @@ class SlackHealthcheckBot:
                 # Check if we already sent a follow-up to this user in this thread
                 if self.mongodb.check_followup_sent(user, thread_ts):
                     print(f"Follow-up already sent to {username} in this thread")
-                    return "", 200
+                    from flask import jsonify
+                    return jsonify({"text": "OK"}), 200
                 
-                # Create follow-up message
-                follow_up_text = f"<@{user}>, thanks for the detailed update! Since you're "
+                # Create follow-up message with buttons
+                follow_up_blocks = [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"<@{user}>, thanks for your standup update! Since you mentioned "
+                        }
+                    }
+                ]
+                
                 if not_on_track and has_blockers:
-                    follow_up_text += "either not on track or facing a blocker"
+                    follow_up_blocks[0]["text"]["text"] += "you're not on track or have blockers, would you like help?"
                 elif not_on_track:
-                    follow_up_text += "not on track"
+                    follow_up_blocks[0]["text"]["text"] += "you're not on track, would you like help?"
                 else:
-                    follow_up_text += "facing a blocker"
+                    follow_up_blocks[0]["text"]["text"] += "you have blockers, would you like help?"
                 
-                follow_up_text += ", would you like help?\nYour status:\n"
+                follow_up_blocks.append({
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🚨 Need help now",
+                                "emoji": True
+                            },
+                            "value": "need_help_now",
+                            "action_id": "need_help_now"
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "⏰ Can wait",
+                                "emoji": True
+                            },
+                            "value": "can_wait",
+                            "action_id": "can_wait"
+                        }
+                    ]
+                })
                 
-                if not_on_track:
-                    follow_up_text += "• On Track: None\n"
-                if has_blockers:
-                    follow_up_text += "• Blockers: None\n"
-                
-                follow_up_text += "\nReact with one of the following:\n"
-                follow_up_text += "• :sos: = Need help now\n"
-                follow_up_text += "• :clock4: = Can wait / just keeping team informed"
-                
-                # Send follow-up message in thread
+                # Send follow-up message in DM
                 follow_up_response = self.client.chat_postMessage(
                     channel=channel_id,
-                    thread_ts=thread_ts,
-                    text=follow_up_text
+                    text="Follow-up for your standup response",
+                    blocks=follow_up_blocks
                 )
                 
                 # Store that we sent a follow-up
@@ -381,11 +471,13 @@ class SlackHealthcheckBot:
             else:
                 print(f"No follow-up needed for {username} - on track and no blockers")
             
-            return "", 200
+            from flask import jsonify
+            return jsonify({"text": "OK"}), 200
             
         except Exception as e:
             print(f"Error handling standup response: {e}")
-            return "", 200
+            from flask import jsonify
+            return jsonify({"text": "OK"}), 200
 
 # Initialize bot
 bot = SlackHealthcheckBot()
