@@ -3830,7 +3830,6 @@ class DailyStandupBot:
             return None
 
     def check_blocker_followups(self):
-        """Check for blockers that need follow-up and unresolved blockers in Coda."""
         try:
             if not hasattr(self, 'last_followup_sent'):
                 self.last_followup_sent = {}
@@ -5335,7 +5334,21 @@ def handle_events():
                 if is_dm:
                     print(f"🔍 DEBUG: This is a DM message")
 
-                    # First, check if this is a command (slash or exclamation)
+                    # Check if this is a reply to a standup prompt first
+                    thread_ts = event.get('thread_ts')
+                    if thread_ts:
+                        print(f"🔍 DEBUG: Processing as standup response (in thread)")
+                        # This is a reply in a DM (standup response)
+                        bot.handle_standup_response(
+                            user_id=event['user'],
+                            message_ts=event['ts'],
+                            thread_ts=thread_ts,
+                            text=event['text'],
+                            channel_id=event.get('channel')
+                        )
+                        return jsonify({'status': 'standup_response_processed'})
+
+                    # Then check if this is a command (slash or exclamation)
                     text = event.get('text', '').strip()
                     if bot.handle_commands(event['user'], text, event.get('channel')):
                         print(f"🔍 DEBUG: Command processed successfully")
@@ -5400,25 +5413,8 @@ def handle_events():
                         )
                         return jsonify({'status': 'mentor_check_sent'})
 
-                    # For DMs, only process if this is a response to our standup prompt
-                    # Check if this message is in a thread (reply to bot message)
-                    # Note: Commands and legacy requests are handled above and bypass this check
-                    thread_ts = event.get('thread_ts')
-                    if thread_ts:
-                        print(f"🔍 DEBUG: Processing as standup response (in thread)")
-                        # This is a reply in a DM (standup response)
-                        bot.handle_standup_response(
-                            user_id=event['user'],
-                            message_ts=event['ts'],
-                            thread_ts=thread_ts,
-                            text=event['text'],
-                            channel_id=event.get('channel')
-                        )
-                    else:
-                        print(f"🔍 DEBUG: Sending info message for casual DM")
-                        # Send info message for casual messages
-                        bot.send_info_message(event.get('channel'), event['user'])
-                        return jsonify({'status': 'info_message_sent'})
+                    # This section is now handled above - remove duplicate logic
+                    pass
                 else:
                     print(f"🔍 DEBUG: Not a DM message, ignoring")
             elif event['type'] == 'message.im':
@@ -5440,22 +5436,8 @@ def handle_events():
                     print(f"🔍 DEBUG: Command processed successfully in message.im")
                     return jsonify({'status': 'command_processed'})
                 
-                # For message.im events, only process if this is a response to our standup prompt
-                thread_ts = event.get('thread_ts')
-                if thread_ts:
-                    print(f"🔍 DEBUG: Processing DM message as standup response (in thread)")
-                    bot.handle_standup_response(
-                        user_id=event['user'],
-                        message_ts=event['ts'],
-                        thread_ts=thread_ts,
-                        text=event['text'],
-                        channel_id=event.get('channel')
-                    )
-                else:
-                    print(f"🔍 DEBUG: Sending info message for casual DM")
-                    # Send info message for casual messages
-                    bot.send_info_message(event.get('channel'), event['user'])
-                    return jsonify({'status': 'info_message_sent'})
+                # This section is now handled above - remove duplicate logic
+                pass
             elif event['type'] == 'reaction_added':
                 print(f"🔍 DEBUG: Processing reaction event")
                 # Handle reactions
@@ -5612,34 +5594,14 @@ def handle_slash_commands():
                 request_type="blocker",
                                 channel=user_id  # Send directly to user's DM
                             )
-                            if result:
-                                print(f"✅ Mentor check sent successfully for {user_name} to DM")
-                            else:
-                                print(f"❌ Mentor check returned None - likely failed")
-                                # Fallback: send a simple message to DM
-                                try:
-                                    bot.client.chat_postMessage(
-                                        channel=user_id,
-                                        text=f"<@{user_id}>, I'm here to help with your blocker! Please describe what's blocking you."
-                                    )
-                                    print(f"✅ Fallback message sent successfully to DM")
-                                except Exception as fallback_error:
-                                    print(f"❌ Error sending fallback message to DM: {fallback_error}")
+                            if result is None or result is False:
+                                print(f"❌ Mentor check returned None/False - likely failed")
+                                # Don't send fallback - let the mentor check handle it
                         except Exception as e:
                             print(f"❌ Error sending mentor check to DM: {e}")
                             import traceback
                             traceback.print_exc()
-                            # Fallback: send a simple message to DM
-                            try:
-                                bot.client.chat_postMessage(
-                                    channel=user_id,
-                                    text=f"<@{user_id}>, I'm here to help with your blocker! Please describe what's blocking you."
-                                )
-                                print(f"✅ Fallback message sent successfully to DM after exception")
-                            except Exception as fallback_error:
-                                print(f"❌ Error sending fallback message to DM: {fallback_error}")
-                                import traceback
-                                traceback.print_exc()
+                            # Don't send fallback - let the mentor check handle it
                                 
                     except Exception as e:
                         print(f"❌ Error in background blocked processing: {e}")
