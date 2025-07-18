@@ -76,6 +76,19 @@ The bot will:
 3. Store responses in Coda when users click buttons
 4. Provide fallback storage if Coda is unavailable
 
+### Commands
+
+Users can interact with the bot using slash commands (`/`) or exclamation commands (`!`):
+
+- `/checkin` or `!checkin` - Start a standup check-in
+- `/blocked` or `!blocked` - Report a blocker (mentor check first)
+- `/kr [search]` or `!kr [search]` - Search for Key Results
+- `/kr` or `!kr` - Get KR help (mentor check first)
+- `/health` or `!health` - Start a health check
+- `/help` or `!help` - Show help message with available commands
+
+Commands can be used in direct messages with the bot.
+
 ## API Reference
 
 ### CodaIntegration Class

@@ -67,4 +67,110 @@ async function setupCodaTable() {
   }
 }
 
-setupCodaTable().catch(console.error); 
+async function setupBlockerTable() {
+  console.log('🔧 Setting up Blocker Table with Resolution Columns\n');
+  
+  const apiToken = process.env.CODA_API_TOKEN;
+  const docId = process.env.CODA_DOC_ID;
+  const blockerTableId = process.env.CODA_TABLE_ID2;
+  
+  if (!blockerTableId) {
+    console.log('❌ No blocker table configured (CODA_TABLE_ID2 not set)');
+    return;
+  }
+  
+  console.log('Blocker Table ID:', blockerTableId);
+  
+  try {
+    // First, check current table structure
+    console.log('\n📊 Checking current table structure...');
+    const tableUrl = `https://coda.io/apis/v1/docs/${docId}/tables/${blockerTableId}`;
+    const tableResponse = await axios.get(tableUrl, {
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      }
+    });
+    
+    console.log('✅ Table found:', tableResponse.data.name);
+    
+    // Get current columns
+    const columnsUrl = `https://coda.io/apis/v1/docs/${docId}/tables/${blockerTableId}/columns`;
+    const columnsResponse = await axios.get(columnsUrl, {
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      }
+    });
+    
+    const existingColumns = columnsResponse.data.items.map(col => col.name);
+    console.log('📋 Current columns:', existingColumns);
+    
+    // Define required resolution columns
+    const requiredColumns = [
+      { name: 'Status', type: 'text' },
+      { name: 'Resolution Date', type: 'date' },
+      { name: 'Resolved By', type: 'text' },
+      { name: 'Resolution Notes', type: 'canvas' }
+    ];
+    
+    // Check which columns are missing
+    const missingColumns = requiredColumns.filter(col => !existingColumns.includes(col.name));
+    
+    if (missingColumns.length === 0) {
+      console.log('✅ All resolution columns already exist!');
+      return;
+    }
+    
+    console.log('\n🔧 Adding missing columns...');
+    
+    // Add missing columns
+    for (const column of missingColumns) {
+      console.log(`Adding column: ${column.name} (${column.type})`);
+      
+      const addColumnUrl = `https://coda.io/apis/v1/docs/${docId}/tables/${blockerTableId}/columns`;
+      const columnData = {
+        name: column.name,
+        format: {
+          type: column.type
+        }
+      };
+      
+      try {
+        const addResponse = await axios.post(addColumnUrl, columnData, {
+          headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log(`✅ Added column: ${column.name}`);
+      } catch (error) {
+        if (error.response?.status === 409) {
+          console.log(`⚠️ Column ${column.name} already exists`);
+        } else {
+          console.log(`❌ Error adding column ${column.name}:`, error.response?.data?.message || error.message);
+        }
+      }
+    }
+    
+    // Verify final structure
+    console.log('\n📊 Verifying final table structure...');
+    const finalColumnsResponse = await axios.get(columnsUrl, {
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      }
+    });
+    
+    console.log('📋 Final columns:');
+    finalColumnsResponse.data.items.forEach((column, index) => {
+      console.log(`${index + 1}. ${column.name} (${column.format.type})`);
+    });
+    
+    console.log('\n🎉 Blocker table setup complete!');
+    
+  } catch (error) {
+    console.log('❌ Error:', error.response?.data?.message || error.message);
+  }
+}
+
+setupCodaTable().catch(console.error);
+setupBlockerTable(); 

@@ -12,23 +12,42 @@ load_dotenv('.env')
 class BotConfig:
     """Configuration class for the Daily Standup Bot."""
     
-    # AI Configuration
-    MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY") or os.environ.get("Mistral_Api")
-    
     # Slack Configuration
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
-    SLACK_CHANNEL_ID = os.environ.get("SLACK_CHANNEL_ID")
+    SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
+    SLACK_CHANNEL_ID = os.environ.get("SLACK_CHANNEL_ID")  # Deprecated, use Channel_Main_ID
     SLACK_ESCALATION_CHANNEL = os.environ.get("SLACK_ESCALATION_CHANNEL", "leads")
+    CHANNEL_MAIN_ID = os.environ.get("Channel_Main_ID")  # Main channel for general bot messages
+    # Add more channel variables as needed
     
     # Timing Configuration
-    STANDUP_TIME = "10:00"  # 10 AM EST
-    RESPONSE_DEADLINE = "16:00"  # 4 PM EST
-    REMINDER_TIME = "10:00"  # 10 AM EST
+    STANDUP_TIME = os.environ.get("STANDUP_TIME", "09:00")
+    RESPONSE_DEADLINE = os.environ.get("RESPONSE_DEADLINE", "10:00")
+    REMINDER_TIME = os.environ.get("REMINDER_TIME", "09:30")
     
     # Workflow Configuration
     ESCALATION_EMOJI = os.environ.get("ESCALATION_EMOJI", "🆘")
     MONITOR_EMOJI = os.environ.get("MONITOR_EMOJI", "🕓")
     AUTO_ESCALATION_DELAY_HOURS = int(os.environ.get("AUTO_ESCALATION_DELAY_HOURS", "2"))
+    
+    # Flask Configuration
+    FLASK_HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
+    FLASK_PORT = int(os.environ.get("FLASK_PORT", "3000"))
+    FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "False") == "True"
+    
+    # Coda Configuration
+    CODA_API_TOKEN = os.environ.get("CODA_API_TOKEN")
+    CODA_DOC_ID = os.environ.get("CODA_DOC_ID")
+    # Table IDs (label each for clarity)
+    HEALTH_CHECK_TABLE = os.environ.get("Health_Check")  # Main Health Check Table (Coda Table ID)
+    BLOCKER_TABLE = os.environ.get("Blocker")  # Blocker Table
+    STANDUP_TABLE = os.environ.get("Stand_Up")  # Standup Table
+    KR_TABLE = os.environ.get("KR_Table")  # KR Table
+    AFTER_HEALTH_CHECK_TABLE = os.environ.get("After_Health_Check")  # After Health Check Table
+    MENTOR_TABLE = os.environ.get("Mentor_Table")  # Mentor Table
+    
+    # AI Configuration
+    MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
     
     # Message Templates
     STANDUP_MESSAGE_TEMPLATE = """
@@ -85,11 +104,6 @@ React with one of the following:
     
     # Valid "no blockers" responses
     NO_BLOCKERS_KEYWORDS = ['none', 'no', 'n/a', '']
-    
-    # Flask Configuration
-    FLASK_HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
-    FLASK_PORT = int(os.environ.get("FLASK_PORT", "3000"))
-    FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
     
     @classmethod
     def validate_config(cls):

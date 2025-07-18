@@ -22,8 +22,8 @@ class MistralService:
         if not self.api_key:
             print("⚠️ Warning: Mistral API key not configured")
     
-    def _make_request(self, endpoint: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Make a request to the Mistral API."""
+    def _make_request(self, endpoint: str, data: Dict[str, Any], max_retries: int = 3) -> Optional[Dict[str, Any]]:
+        """Make a request to the Mistral API with retry logic."""
         if not self.api_key:
             return None
             
@@ -33,13 +33,32 @@ class MistralService:
             "Content-Type": "application/json"
         }
         
-        try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Error making Mistral API request: {e}")
-            return None
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, headers=headers, json=data, timeout=30)
+                
+                # Handle rate limiting specifically
+                if response.status_code == 429:
+                    wait_time = (2 ** attempt) * 1  # Exponential backoff: 1s, 2s, 4s
+                    print(f"⚠️ Rate limited (429). Waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    import time
+                    time.sleep(wait_time)
+                    continue
+                
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:  # Last attempt
+                    print(f"❌ Error making Mistral API request after {max_retries} attempts: {e}")
+                    return None
+                else:
+                    wait_time = (2 ** attempt) * 1
+                    print(f"⚠️ Request failed, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                    import time
+                    time.sleep(wait_time)
+        
+        return None
     
     def generate_kr_explanation(self, kr_name: str, owner: str, status: str, 
                                progress: str = "", objective: str = "", definition_of_done: str = "") -> str:
@@ -84,7 +103,15 @@ Keep it concise and actionable.
         if result and "choices" in result:
             return result["choices"][0]["message"]["content"].strip()
         else:
-            return f"This is a placeholder explanation for the KR '{kr_name}'. (AI integration needed)"
+            # Provide a more helpful fallback based on available information
+            if status.lower() in ['todo', 'not started']:
+                return f"This KR '{kr_name}' is currently in planning phase. Consider breaking it down into smaller tasks and setting up initial milestones."
+            elif status.lower() in ['in progress', 'working']:
+                return f"This KR '{kr_name}' is actively being worked on. Regular check-ins and progress updates will help keep it on track."
+            elif status.lower() in ['blocked', 'stuck']:
+                return f"This KR '{kr_name}' appears to be blocked. Consider reaching out to your team lead or posting in the help channel for assistance."
+            else:
+                return f"This KR '{kr_name}' is in '{status}' status. Review the definition of done and ensure all requirements are being met."
     
     def generate_help_suggestion(self, blocker_description: str, kr_name: str = "") -> str:
         """Generate helpful suggestions for blockers using Mistral AI."""

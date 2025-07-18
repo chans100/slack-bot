@@ -8,6 +8,7 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from difflib import SequenceMatcher
+from .config import BotConfig
 
 # Load environment variables
 load_dotenv('.env')
@@ -19,9 +20,11 @@ class CodaService:
         """Initialize Coda service with API token and table IDs."""
         self.api_token = os.environ.get("CODA_API_TOKEN")
         self.doc_id = os.environ.get("CODA_DOC_ID")
-        self.main_table_id = os.environ.get("CODA_TABLE_ID")
-        self.blocker_table_id = os.environ.get("CODA_TABLE_ID2")
-        self.standup_table_id = os.environ.get("CODA_TABLE_ID3")
+        self.main_table_id = BotConfig.HEALTH_CHECK_TABLE  # Use Health_Check env var
+        self.blocker_table_id = os.environ.get("Blocker")
+        self.standup_table_id = os.environ.get("Stand_Up")
+        self.mentor_table_id = os.environ.get("Mentor_Table")  # New mentor table
+        self.blocker_res_table_id = "grid-Kt4x0G2iIM"  # Blocker Resolution table
         
         if not self.api_token:
             print("❌ CODA_API_TOKEN not found in environment variables")
@@ -32,14 +35,16 @@ class CodaService:
             return
             
         if not self.main_table_id:
-            print("❌ CODA_TABLE_ID not found in environment variables")
+            print("❌ Health_Check table ID not found in environment variables")
             return
             
         print("✅ Coda service initialized")
         print(f"   Doc ID: {self.doc_id}")
-        print(f"   Main Table ID: {self.main_table_id}")
+        print(f"   Main Health Check Table ID: {self.main_table_id}")
         print(f"   Blocker Table ID: {self.blocker_table_id}")
         print(f"   Standup Table ID: {self.standup_table_id}")
+        print(f"   Mentor Table ID: {self.mentor_table_id}")
+        print(f"   Blocker Resolution Table ID: {self.blocker_res_table_id}")
     
     def _make_request(self, method, endpoint, data=None):
         """Make a request to the Coda API."""
@@ -103,6 +108,7 @@ class CodaService:
         data = {
             "rows": [{
                 "cells": [
+                    {"column": "User ID", "value": user_id},
                     {"column": "Name", "value": username},
                     {"column": "Response", "value": response},
                     {"column": "Timestamp", "value": timestamp}
@@ -141,6 +147,7 @@ class CodaService:
         data = {
             "rows": [{
                 "cells": [
+                    {"column": "User ID", "value": user_id},
                     {"column": "Name", "value": username},
                     {"column": "Blocker Description", "value": blocker_description},
                     {"column": "KR Name", "value": kr_name},
@@ -165,6 +172,160 @@ class CodaService:
         else:
             print("❌ Failed to store blocker in Coda")
             return False
+
+    def get_column_id_map(self, table_id):
+        """Fetch and return a mapping from display name to column ID for a table."""
+        endpoint = f"/docs/{self.doc_id}/tables/{table_id}/columns"
+        result = self._make_request("GET", endpoint)
+        if not result or not result.get("items"):
+            print("❌ Could not fetch columns for mapping.")
+            return {}
+        return {col["name"]: col["id"] for col in result["items"]}
+
+    def resolve_blocker(self, user_id, kr_name, blocker_description, resolved_by, resolution_notes=None, slack_client=None, user_name=None):
+        """Update the Resolution column for a blocker in the main blocker table, using column ID mapping. Tries both user_id and user_name for matching."""
+        print(f"🔍 DEBUG: resolve_blocker called with:")
+        print(f"   - user_id: {user_id}")
+        print(f"   - user_name: {user_name}")
+        print(f"   - kr_name: {kr_name}")
+        print(f"   - blocker_description: {blocker_description}")
+        print(f"   - resolved_by: {resolved_by}")
+        print(f"   - resolution_notes: {resolution_notes}")
+        
+        if not self.blocker_table_id:
+            print("❌ Blocker table ID not configured")
+            return False
+        
+        # Get column ID mapping
+        col_map = self.get_column_id_map(self.blocker_table_id)
+        required = ["Blocker Description", "KR Name", "Resolution"]
+        # Check for either User ID (new) or Name (old) column
+        if "User ID" not in col_map and "Name" not in col_map:
+            print(f"❌ Neither 'User ID' nor 'Name' column found in table.")
+            return False
+        for col in required:
+            if col not in col_map:
+                print(f"❌ Required column '{col}' not found in table.")
+                return False
+        
+        # Find the correct row
+        endpoint = f"/docs/{self.doc_id}/tables/{self.blocker_table_id}/rows"
+        result = self._make_request("GET", endpoint)
+        if not result:
+            print("❌ Could not fetch blocker rows")
+            return False
+        
+        row_id = None
+        # Try all possible user identifiers for matching
+        user_identifiers = [user_id]
+        if user_name and user_name != user_id:
+            user_identifiers.append(user_name)
+        
+        print(f"🔍 DEBUG: Looking for user identifiers: {user_identifiers}")
+        print(f"🔍 DEBUG: Looking for KR: '{kr_name}'")
+        print(f"🔍 DEBUG: Looking for description: '{blocker_description}'")
+        
+        # First pass: exact matching
+        for row in result.get("items", []):
+            cells = row.get("values", {})
+            # Try User ID first (new format), then fall back to Name (old format)
+            row_user_id = cells.get(col_map.get("User ID", ""), "")
+            row_user_name = cells.get(col_map.get("Name", ""), "")
+            row_kr = cells.get(col_map["KR Name"], "")
+            row_description = cells.get(col_map["Blocker Description"], "")
+            row_resolution = cells.get(col_map["Resolution"], "")
+            
+            print(f"🔍 DEBUG: Checking row - User ID: '{row_user_id}', Name: '{row_user_name}', KR: '{row_kr}', Desc: '{row_description}', Resolution: '{row_resolution}'")
+            
+            # Check if this row matches any identifier
+            user_matches = any(
+                ident == row_user_id or ident == row_user_name for ident in user_identifiers
+            )
+            
+            # Check for exact matches first
+            if (user_matches and 
+                row_kr == kr_name and 
+                row_description == blocker_description and
+                not row_resolution):  # Only match unresolved blockers
+                row_id = row.get('id')
+                print(f"✅ Found exact matching row: {row_id}")
+                break
+        
+        # Second pass: if no exact match, try partial matching for description
+        if not row_id:
+            print("🔍 DEBUG: No exact match found, trying partial description matching...")
+            for row in result.get("items", []):
+                cells = row.get("values", {})
+                row_user_id = cells.get(col_map.get("User ID", ""), "")
+                row_user_name = cells.get(col_map.get("Name", ""), "")
+                row_kr = cells.get(col_map["KR Name"], "")
+                row_description = cells.get(col_map["Blocker Description"], "")
+                row_resolution = cells.get(col_map["Resolution"], "")
+                
+                # Check if this row matches any identifier
+                user_matches = any(
+                    ident == row_user_id or ident == row_user_name for ident in user_identifiers
+                )
+                
+                # More flexible matching - check if descriptions are similar
+                description_matches = False
+                if row_description == blocker_description:
+                    description_matches = True
+                else:
+                    # Try partial matching for truncated descriptions
+                    if (blocker_description in row_description or 
+                        row_description in blocker_description or
+                        (len(blocker_description) > 20 and len(row_description) > 20 and
+                         blocker_description[:20] == row_description[:20])):
+                        description_matches = True
+                        print(f"🔍 DEBUG: Partial description match - '{blocker_description}' vs '{row_description}'")
+                
+                if (user_matches and row_kr == kr_name and description_matches and not row_resolution):
+                    row_id = row.get('id')
+                    print(f"✅ Found partial matching row: {row_id}")
+                    break
+        
+        # Third pass: fallback - find the most recent unresolved blocker for this user and KR
+        if not row_id:
+            print("🔍 DEBUG: No partial match found, trying fallback...")
+            for row in result.get("items", []):
+                cells = row.get("values", {})
+                row_user_id = cells.get(col_map.get("User ID", ""), "")
+                row_user_name = cells.get(col_map.get("Name", ""), "")
+                row_kr = cells.get(col_map["KR Name"], "")
+                row_resolution = cells.get(col_map["Resolution"], "")
+                
+                if (any(ident == row_user_id or ident == row_user_name for ident in user_identifiers)
+                    and row_kr == kr_name and not row_resolution):
+                    row_id = row.get('id')
+                    print(f"✅ Found fallback unresolved blocker row: {row_id}")
+                    break
+        
+        if not row_id:
+            print("❌ No matching blocker row found to resolve")
+            return False
+        
+        # Prepare update data
+        update_data = {
+            "row": {
+                "cells": [
+                    {"column": col_map["Resolution"], "value": resolution_notes or "Resolved"}
+                ]
+            }
+        }
+        print(f"🔍 DEBUG: Sending update data to Coda: {update_data}")
+        endpoint = f"/docs/{self.doc_id}/tables/{self.blocker_table_id}/rows/{row_id}"
+        print(f"🔍 DEBUG: Endpoint: {endpoint}")
+        result = self._make_request("PUT", endpoint, update_data)
+        print(f"🔍 DEBUG: Coda response: {result}")
+        if result:
+            print(f"✅ Blocker marked as resolved in Coda: {row_id}")
+            return True
+        else:
+            print("❌ Failed to update blocker as resolved in Coda")
+            return False
+
+
     
     def get_responses_by_date(self, date):
         """Get all responses for a specific date."""
@@ -290,6 +451,7 @@ class CodaService:
         data = {
             "rows": [{
                 "cells": [
+                    {"column": "User ID", "value": user_id},
                     {"column": "Name", "value": username},
                     {"column": "Response", "value": response_text},
                     {"column": "Timestamp", "value": timestamp}
@@ -308,39 +470,43 @@ class CodaService:
             return False
     
     def search_kr_table(self, search_term):
-        """Search the KR table (CODA_TABLE_ID4) for a KR/assignment name."""
+        """Search all four KR tables for a KR/assignment name."""
         # Strip asterisk prefix if present
         original_search_term = search_term
         if search_term.startswith('* '):
             search_term = search_term[2:]  # Remove "* " prefix
             print(f"🔍 DEBUG: search_kr_table - Stripped asterisk prefix, now searching for: '{search_term}'")
-        
-        kr_table_id = os.environ.get("CODA_TABLE_ID4")
-        if not kr_table_id:
-            print("❌ KR table ID (CODA_TABLE_ID4) not configured")
-            return []
-        endpoint = f"/docs/{self.doc_id}/tables/{kr_table_id}/rows"
-        result = self._make_request("GET", endpoint)
-        if not result:
-            return []
-        print("[DEBUG] Raw KR rows from Coda:")
-        for row in result.get("items", []):
-            print(row.get("values", {}))
-        matches = []
-        for row in result.get("items", []):
-            cells = row.get("values", {})
-            kr_name = cells.get("c-yQ1M6UqTSj", "")  # Coda column ID for 'Key Result'
-            print(f"[DEBUG] Checking KR: '{kr_name}' against search term: '{search_term}'")
-            
-            # EXACT MATCH ONLY (case-insensitive)
-            if search_term.lower().strip() == kr_name.lower().strip():
-                print(f"[DEBUG] EXACT MATCH FOUND!")
-                matches.append(cells)
-                continue
-                
-            # No other matching strategies - only exact matches allowed
-            print(f"[DEBUG] No exact match - skipping")
-        return matches
+
+        # Table IDs for all four KR tables
+        kr_table_ids = []
+        for env_var in ["KR_Table", "KR_Table2", "KR_Table3", "KR_Table4"]:
+            table_id = os.environ.get(env_var)
+            if table_id:
+                kr_table_ids.append(table_id)
+        doc_id = self.doc_id
+        all_matches = []
+
+        # Helper to search a table for KR name
+        def search_table(table_id, kr_column):
+            if not table_id:
+                return []
+            endpoint = f"/docs/{doc_id}/tables/{table_id}/rows"
+            result = self._make_request("GET", endpoint)
+            if not result:
+                return []
+            matches = []
+            for row in result.get("items", []):
+                cells = row.get("values", {})
+                kr_name = cells.get(kr_column, "")
+                if search_term.lower().strip() == kr_name.lower().strip():
+                    matches.append(cells)
+            return matches
+
+        # Search all four KR tables (assume same column id for now)
+        for table_id in kr_table_ids:
+            all_matches.extend(search_table(table_id, "c-yQ1M6UqTSj"))
+
+        return all_matches
 
     def add_health_check_explanation(self, user_id, username, health_check_response, explanation):
         """Add health check explanation to After_Health_Check table."""
@@ -567,3 +733,72 @@ class CodaService:
         else:
             print("❌ Failed to get KR table structure")
             return None 
+
+    def add_mentor_check(self, user_id, mentor_response, request_type, timestamp=None, username=None):
+        """Add a mentor check response to the mentor table."""
+        if not self.mentor_table_id:
+            print("❌ Mentor table ID not configured")
+            return False
+            
+        if timestamp is None:
+            timestamp = datetime.now().isoformat()
+            
+        if username is None:
+            username = user_id
+            
+        data = {
+            "rows": [{
+                "cells": [
+                    {"column": "Name", "value": username},
+                    {"column": "User ID", "value": user_id},
+                    {"column": "Mentor Response", "value": mentor_response},
+                    {"column": "Request Type", "value": request_type},
+                    {"column": "Timestamp", "value": timestamp}
+                ]
+            }]
+        }
+        
+        endpoint = f"/docs/{self.doc_id}/tables/{self.mentor_table_id}/rows"
+        result = self._make_request("POST", endpoint, data)
+        
+        if result:
+            print(f"✅ Mentor check stored in Coda: {result.get('id', 'unknown')}")
+            return True
+        else:
+            print("❌ Failed to store mentor check in Coda")
+            return False
+    
+    def _get_display_name(self, slack_client, user_id):
+        """Helper method to get display name from Slack user ID."""
+        try:
+            user_info = slack_client.users_info(user=user_id)
+            if user_info.get("ok"):
+                return user_info["user"].get("real_name", "")
+        except Exception as e:
+            print(f"🔍 DEBUG: Error getting display name for {user_id}: {e}")
+        return ""
+    
+    def get_mentor_checks_by_date(self, date):
+        """Get all mentor checks for a specific date."""
+        if not self.mentor_table_id:
+            print("❌ Mentor table ID not configured")
+            return []
+            
+        endpoint = f"/docs/{self.doc_id}/tables/{self.mentor_table_id}/rows"
+        result = self._make_request("GET", endpoint)
+        
+        if not result:
+            return []
+            
+        mentor_checks = []
+        for row in result.get("items", []):
+            cells = row.get("values", {})
+            mentor_checks.append({
+                "user_id": cells.get("User ID", ""),
+                "username": cells.get("Name", ""),
+                "mentor_response": cells.get("Mentor Response", ""),
+                "request_type": cells.get("Request Type", ""),
+                "timestamp": cells.get("Timestamp", "")
+            })
+        
+        return mentor_checks 
