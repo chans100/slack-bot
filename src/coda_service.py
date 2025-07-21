@@ -552,9 +552,9 @@ class CodaService:
             kr_name = kr_name[2:]  # Remove "* " prefix
             print(f"🔍 DEBUG: Stripped asterisk prefix, now searching for: '{kr_name}'")
         
-        kr_table_id = os.environ.get("CODA_TABLE_ID4")
+        kr_table_id = os.environ.get("KR_Table4")
         if not kr_table_id:
-            print("❌ KR table ID (CODA_TABLE_ID4) not configured")
+            print("❌ KR table ID (KR_Table4) not configured")
             return None
         
         endpoint = f"/docs/{self.doc_id}/tables/{kr_table_id}/rows"
@@ -641,9 +641,9 @@ class CodaService:
     
     def get_kr_display_info(self, kr_name):
         """Get KR information for display without updating anything."""
-        kr_table_id = os.environ.get("CODA_TABLE_ID4")
+        kr_table_id = os.environ.get("KR_Table4")
         if not kr_table_id:
-            print("❌ KR table ID (CODA_TABLE_ID4) not configured")
+            print("❌ KR table ID (KR_Table4) not configured")
             return None
         
         # Find the KR row
@@ -703,9 +703,9 @@ class CodaService:
     
     def list_kr_table_columns(self):
         """List all columns in the KR table for debugging."""
-        kr_table_id = os.environ.get("CODA_TABLE_ID4")
+        kr_table_id = os.environ.get("KR_Table4")
         if not kr_table_id:
-            print("❌ KR table ID (CODA_TABLE_ID4) not configured")
+            print("❌ KR table ID (KR_Table4) not configured")
             return None
         
         endpoint = f"/docs/{self.doc_id}/tables/{kr_table_id}"

@@ -123,6 +123,8 @@ class DailyStandupBot:
         self._user_list_cache = None
         self._user_list_cache_time = 0
 
+        # Add this at the top of the file or in the class __init__
+        self.BLOCKER_FOLLOWUP_DELAY_HOURS = 24  # Change this value to adjust the follow-up delay
         
     def send_daily_standup(self):
         """Send the daily standup prompt message with hybrid interaction options."""
@@ -1607,6 +1609,7 @@ class DailyStandupBot:
             print(f"Error checking missing responses: {e.response['error']}")
 
     def handle_button_click(self, payload):
+        trigger_id = payload.get('trigger_id')  # Ensure trigger_id is always available
         try:
             print("Received button click payload:", payload)
             user = payload['user']['id']
@@ -2777,6 +2780,19 @@ class DailyStandupBot:
                 value_parts = action.split("_", 3)
                 if len(value_parts) >= 4:
                     _, _, request_type, user_id = value_parts
+                    if request_type == "blocker":
+                        # Open the blocker modal for submission (reuse escalate_help_request logic)
+                        user_info = self.client.users_info(user=user_id)
+                        user_name = user_info['user']['real_name']
+                        user_data = {
+                            'trigger_id': trigger_id,
+                            'user_id': user_id,
+                            'user_name': user_name,
+                            'channel_id': channel_id,
+                            'message_ts': message_ts
+                        }
+                        self.escalate_help_request(user_id, user_name, user_data)
+                        return {"response_action": "clear"}, 200
                     # If this was a KR request, check for a pending search term
                     if request_type == "kr":
                         search_term = self.pending_kr_search.get(user_id)
@@ -3844,16 +3860,18 @@ class DailyStandupBot:
                     if blocker_info.get('resolved', False) or blocker_info.get('followup_sent', False):
                         print(f"🔍 DEBUG: Blocker {blocker_id} already resolved or followup sent")
                         continue
-                    # Removed: 1 minute for testing logic
-                    # Place your actual follow-up timing logic here if needed
+                    # 24-hour follow-up logic
+                    if (now - blocker_info['escalation_time']).total_seconds() >= self.BLOCKER_FOLLOWUP_DELAY_HOURS * 3600:
+                        blockers_to_followup.append(blocker_info)
                 print(f"🔍 DEBUG: Found {len(blockers_to_followup)} blockers needing follow-up")
                 for blocker_info in blockers_to_followup:
                     user_id = blocker_info['user_id']
                     if user_id in self.last_followup_sent:
                         last_sent = self.last_followup_sent[user_id]
                         time_since_last = now - last_sent
-                        # Removed: 5 minutes for testing logic
-                        continue
+                        # Prevent duplicate follow-ups within the delay window
+                        if time_since_last.total_seconds() < self.BLOCKER_FOLLOWUP_DELAY_HOURS * 3600:
+                            continue
                     print(f"🔍 DEBUG: Sending follow-up for blocker {blocker_info['blocker_id']}")
                     self.send_blocker_followup(blocker_info)
                     blocker_info['followup_sent'] = True
