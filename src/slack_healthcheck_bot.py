@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dotenv import load_dotenv
-load_dotenv('.env')  # Explicitly load from .env file
+load_dotenv('token.env')  # Explicitly load from .env file
 import time
 import schedule
 import re
@@ -54,6 +54,15 @@ class DailyStandupBot:
             print("✅ Coda service initialized")
         except Exception as e:
             print(f"⚠️ Could not initialize Coda service: {e}")
+        
+        # Initialize Mistral service
+        self.mistral = None
+        try:
+            from mistral_service import MistralService
+            self.mistral = MistralService()
+            print("✅ Mistral service initialized")
+        except Exception as e:
+            print(f"⚠️ Could not initialize Mistral service: {e}")
         
         # Track responses to prevent duplicates
         self.health_check_responses = set()
@@ -119,6 +128,11 @@ class DailyStandupBot:
         schedule.every().day.at(self.config.REMINDER_TIME).do(self.check_missing_responses)
         # Schedule daily health check to all users via DM
         schedule.every().day.at("09:00").do(self.send_health_check_to_all_users)
+        # Schedule daily blocker digest at 15:30
+        # schedule.every().day.at("15:30").do(self.send_daily_blocker_digest)  # In production, send at 3:30 PM
+        # For development, send digest at startup instead:
+        self.send_daily_blocker_digest()
+        self.send_daily_standup_digest()
         
         self._user_list_cache = None
         self._user_list_cache_time = 0
@@ -5201,6 +5215,85 @@ class DailyStandupBot:
                 "Once you've spoken with them, come back if you still need help! 🤝"
             )
         )
+
+    def send_daily_blocker_digest(self):
+        # sends the message but doesn't actually grab the blocker list - NEED TO FIX
+        """Send a daily digest of blockers/issues from Coda to the main Slack channel, with a Mistral-generated summary."""
+        try:
+            if not self.coda:
+                print("❌ Coda service not available, cannot send blocker digest.")
+                return
+            # Get today's date in YYYY-MM-DD format (EST)
+            est_now = get_est_time()
+            today_str = est_now.strftime('%Y-%m-%d')
+            blockers = self.coda.get_blockers_by_date(today_str)
+            if not blockers:
+                digest_text = f"No blockers reported today ({today_str}). 🎉"
+            else:
+                # Generate a summary using Mistral
+                summary = ""
+                if self.mistral:
+                    try:
+                        # Compose a prompt with all blockers
+                        prompt = "Here are the blockers reported today. Summarize the main issues, trends, and suggest next steps for the team.\n\n"
+                        for idx, blocker in enumerate(blockers, 1):
+                            prompt += (
+                                f"{idx}. User: {blocker['user_id']}\n"
+                                f"   KR: {blocker['kr_name']}\n"
+                                f"   Description: {blocker['blocker_description']}\n"
+                                f"   Urgency: {blocker['urgency']}\n"
+                                f"   Notes: {blocker['notes']}\n\n"
+                            )
+                        summary = self.mistral.generate_help_suggestion(blocker_description=prompt)
+                    except Exception as e:
+                        print(f"❌ Error generating Mistral summary: {e}")
+                        summary = "(AI summary unavailable)"
+                else:
+                    summary = "(AI summary unavailable)"
+                digest_text = f"*Daily Blocker Digest for {today_str}*\n\n*AI Summary:*\n{summary}\n\n*Blocker List:*\n"
+                for idx, blocker in enumerate(blockers, 1):
+                    digest_text += (
+                        f"*{idx}.* <@{blocker['user_id']}>\n"
+                        f"• *KR:* {blocker['kr_name']}\n"
+                        f"• *Description:* {blocker['blocker_description']}\n"
+                        f"• *Urgency:* {blocker['urgency']}\n"
+                        f"• *Notes:* {blocker['notes']}\n\n"
+                    )
+            self.client.chat_postMessage(
+                channel=self.channel_id,
+                text=digest_text
+            )
+            print(f"✅ Daily blocker digest sent for {today_str}")
+        except Exception as e:
+            print(f"❌ Error sending daily blocker digest: {e}")
+
+    def send_daily_standup_digest(self):
+        """Send a daily digest of standup responses from Coda to the main Slack channel."""
+        try:
+            if not self.coda:
+                print("❌ Coda service not available, cannot send standup digest.")
+                return
+            # Get today's date in YYYY-MM-DD format (EST)
+            est_now = get_est_time()
+            today_str = est_now.strftime('%Y-%m-%d')
+            responses = self.coda.get_responses_by_date(today_str)
+            if not responses:
+                digest_text = f"No standup responses reported today ({today_str})."
+            else:
+                digest_text = f"*Daily Standup Responses for {today_str}:*\n\n"
+                for idx, resp in enumerate(responses, 1):
+                    digest_text += (
+                        f"*{idx}.* <@{resp['user_id']}>\n"
+                        f"• *Response:* {resp['response']}\n"
+                        f"• *Timestamp:* {resp['timestamp']}\n\n"
+                    )
+            self.client.chat_postMessage(
+                channel=self.channel_id,
+                text=digest_text
+            )
+            print(f"✅ Daily standup digest sent for {today_str}")
+        except Exception as e:
+            print(f"❌ Error sending daily standup digest: {e}")
 
 def generate_kr_explanation(kr_name, owner, status, definition_of_done=None):
     """Generate a contextual explanation for a KR using Mistral AI."""
