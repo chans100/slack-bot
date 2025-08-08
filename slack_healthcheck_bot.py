@@ -44,6 +44,7 @@ class DailyStandupBot:
         
         # Initialize Slack client
         self.client = WebClient(token=self.config.SLACK_BOT_TOKEN)
+        # Fallback channel ID - used when role-based channels are not available
         self.channel_id = self.config.SLACK_CHANNEL_ID
         
         # Initialize Coda service

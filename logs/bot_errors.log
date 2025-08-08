@@ -1,0 +1,150 @@
+2025-07-29 13:16:27,889 - slack_bot - ERROR - Test error message
+2025-07-29 13:16:27,891 - slack_bot - ERROR - Slack API error in test_context
+2025-07-29 13:16:27,893 - slack_bot - ERROR - Unexpected error in test_context
+2025-07-29 13:16:27,895 - slack_bot - ERROR - Unexpected error in test_context
+2025-07-29 15:34:32,630 - slack_bot - ERROR - Test error message
+2025-07-29 15:35:05,932 - slack_bot - ERROR - Test error message
+2025-07-29 15:36:30,934 - slack_bot - ERROR - Test error message
+2025-07-29 18:43:21,110 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:43:33,258 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:43:38,402 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:47:31,978 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:48:33,587 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:52:59,807 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:53:08,674 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:53:43,297 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:54:11,349 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:54:15,698 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:54:17,598 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:55:13,419 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:55:16,638 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-29 18:55:19,455 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-31 14:03:09,325 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:10,102 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:10,348 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:10,610 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:10,845 - slack_bot - ERROR - Error finding executives: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:11,076 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:11,317 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:11,554 - slack_bot - ERROR - Error finding executives: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:11,797 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:12,052 - slack_bot - ERROR - Error finding executives: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:12,310 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 14:03:12,315 - slack_bot - ERROR - Unexpected error in get_user_department_and_sme
+2025-07-31 17:12:09,478 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 18:08:35,086 - slack_bot - ERROR - Unexpected error in handle_slash_commands
+2025-07-31 21:31:04,902 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:05,103 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:05,721 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:17,252 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 21:31:17,675 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:17,865 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:18,076 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:18,352 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:18,545 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:31:18,762 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:42:54,209 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:43:10,690 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-07-31 21:44:48,460 - slack_bot - ERROR - Error getting user info: The request to the Slack API failed. (url: https://www.slack.com/api/users.info)
+The server responded with: {'ok': False, 'error': 'user_not_found'}
+2025-07-31 21:45:13,377 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-01 11:24:38,162 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-01 12:16:11,730 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-01 12:31:13,326 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:06,377 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:06,764 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:06,948 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:07,124 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:07,320 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:07,492 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:07,924 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:08,113 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:08,332 - slack_bot - ERROR - Error finding executives: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:08,509 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:08,699 - slack_bot - ERROR - Error finding executives: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:08,874 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:08:08,900 - slack_bot - ERROR - Unexpected error in get_user_department_and_sme
+2025-08-04 13:14:08,614 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:08,787 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:08,961 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:09,581 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:09,787 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:09,962 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:10,152 - slack_bot - ERROR - Error finding executives: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:10,318 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:10,734 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:10,885 - slack_bot - ERROR - Error finding executives: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:11,082 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:11,528 - slack_bot - ERROR - Error finding department leads: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 13:14:11,536 - slack_bot - ERROR - Unexpected error in get_user_department_and_sme
+2025-08-04 14:12:57,606 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 14:12:59,765 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 14:13:01,189 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 14:13:01,370 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 14:16:15,211 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 14:16:16,082 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 14:16:16,247 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-04 14:30:24,333 - slack_bot - ERROR - Auto-role assignment error: <urlopen error [Errno 11001] getaddrinfo failed>
+2025-08-05 15:17:13,431 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-05 16:21:22,753 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}

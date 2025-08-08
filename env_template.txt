@@ -1,0 +1,36 @@
+# Copy this file to .env and fill in your actual values
+
+# Slack Configuration
+SLACK_BOT_TOKEN=your-slack-bot-token-here
+SLACK_SIGNING_SECRET=your-slack-signing-secret-here
+SLACK_CHANNEL_ID=your-main-channel-id-here
+SLACK_ESCALATION_CHANNEL=leads
+Channel_Main_ID=your-main-channel-id-here
+SLACK_BOT_USER_ID=U0912DJRNSF
+
+# Coda Configuration
+CODA_API_TOKEN=your-coda-api-token-here
+CODA_DOC_ID=your-coda-doc-id-here
+
+# Coda Table IDs
+Health_Check=your-health-check-table-id-here
+Blocker=your-blocker-table-id-here
+Stand_Up=your-standup-table-id-here
+Blocker_Resolution=your-blocker-resolution-table-id-here
+KR_Table=your-kr-table-id-here
+After_Health_Check=your-after-health-check-table-id-here
+Response=your-response-table-id-here
+ERROR_TABLE=your-error-table-id-here
+
+# AI Configuration (optional)
+MISTRAL_API_KEY=your-mistral-api-key-here
+
+# Timing Configuration
+STANDUP_TIME=09:00
+RESPONSE_DEADLINE=10:00
+REMINDER_TIME=09:30
+
+# Flask Configuration
+FLASK_HOST=0.0.0.0
+FLASK_PORT=3000
+FLASK_DEBUG=False 

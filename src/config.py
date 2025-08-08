@@ -15,9 +15,9 @@ class BotConfig:
     # Slack Configuration
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
-    SLACK_CHANNEL_ID = os.environ.get("SLACK_CHANNEL_ID")  # Deprecated, use Channel_Main_ID
+    SLACK_CHANNEL_ID = os.environ.get("SLACK_CHANNEL_ID")  # Fallback channel for general bot messages
     SLACK_ESCALATION_CHANNEL = os.environ.get("SLACK_ESCALATION_CHANNEL", "leads")
-    CHANNEL_MAIN_ID = os.environ.get("Channel_Main_ID")  # Main channel for general bot messages
+    SLACK_BOT_USER_ID = os.environ.get("SLACK_BOT_USER_ID", "U0912DJRNSF")  # Bot user ID
     # Add more channel variables as needed
     
     # Timing Configuration
@@ -38,13 +38,15 @@ class BotConfig:
     # Coda Configuration
     CODA_API_TOKEN = os.environ.get("CODA_API_TOKEN")
     CODA_DOC_ID = os.environ.get("CODA_DOC_ID")
-    # Table IDs (label each for clarity)
-    HEALTH_CHECK_TABLE = os.environ.get("Health_Check")  # Main Health Check Table (Coda Table ID)
-    BLOCKER_TABLE = os.environ.get("Blocker")  # Blocker Table
-    STANDUP_TABLE = os.environ.get("Stand_Up")  # Standup Table
-    KR_TABLE = os.environ.get("KR_Table")  # KR Table
-    AFTER_HEALTH_CHECK_TABLE = os.environ.get("After_Health_Check")  # After Health Check Table
-    MENTOR_TABLE = os.environ.get("Mentor_Table")  # Mentor Table
+    # Coda table IDs
+    MAIN_HEALTH_CHECK_TABLE = os.environ.get("Health_Check")
+    BLOCKER_TABLE = os.environ.get("Blocker")
+    STANDUP_TABLE = os.environ.get("Stand_Up")
+    BLOCKER_RESOLUTION_TABLE = os.environ.get("Blocker_Resolution")
+    KR_TABLE = os.environ.get("KR_Table")
+    AFTER_HEALTH_CHECK_TABLE = os.environ.get("After_Health_Check")
+    RESPONSE_TABLE = os.environ.get("Response")
+    ERROR_TABLE = os.environ.get("ERROR_TABLE", "error_logs")  # Fallback if not set
     
     # AI Configuration
     MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
