@@ -47,6 +47,7 @@ class BotConfig:
     AFTER_HEALTH_CHECK_TABLE = os.environ.get("After_Health_Check")
     RESPONSE_TABLE = os.environ.get("Response")
     ERROR_TABLE = os.environ.get("ERROR_TABLE", "error_logs")  # Fallback if not set
+    MENTOR_TABLE = os.environ.get("Mentor_Table")  # Mentor Table
     
     # AI Configuration
     MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")

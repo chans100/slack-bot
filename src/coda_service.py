@@ -29,6 +29,7 @@ class CodaService:
         self.after_health_check_table_id = BotConfig.AFTER_HEALTH_CHECK_TABLE
         self.response_table_id = BotConfig.RESPONSE_TABLE
         self.error_table_id = BotConfig.ERROR_TABLE
+        self.mentor_table_id = BotConfig.MENTOR_TABLE  # New mentor table support
         
         if not self.api_token:
             print("❌ CODA_API_TOKEN not found in environment variables")
@@ -52,6 +53,7 @@ class CodaService:
         print(f"   Response Table ID: {self.response_table_id}")
         print(f"   KR Table ID: {self.kr_table_id}")
         print(f"   Error Table ID: {self.error_table_id}")
+        print(f"   Mentor Table ID: {self.mentor_table_id}")
         
         # Debug: Check if environment variables are loaded
         print("🔍 DEBUG: Environment variable check:")
@@ -1499,3 +1501,81 @@ class CodaService:
         except Exception as e:
             print(f"❌ Error getting unresolved blockers: {e}")
             return [] 
+
+    def add_mentor_check(self, user_id, mentor_response, request_type, timestamp=None, username=None):
+        """Add a mentor check response to the mentor table."""
+        try:
+            if not self.mentor_table_id:
+                print("❌ Mentor table ID not configured")
+                return False
+            
+            if timestamp is None:
+                timestamp = datetime.now().isoformat()
+            
+            if username is None:
+                username = user_id
+            
+            data = {
+                "rows": [{
+                    "cells": [
+                        {"column": "Name", "value": username},
+                        {"column": "User ID", "value": user_id},
+                        {"column": "Mentor Response", "value": mentor_response},
+                        {"column": "Request Type", "value": request_type},
+                        {"column": "Timestamp", "value": timestamp}
+                    ]
+                }]
+            }
+            
+            endpoint = f"/docs/{self.doc_id}/tables/{self.mentor_table_id}/rows"
+            result = self._make_request("POST", endpoint, data)
+            
+            if result:
+                print(f"✅ Mentor check stored in Coda: {result.get('id', 'unknown')}")
+                return True
+            else:
+                print(f"❌ Failed to store mentor check in Coda")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error adding mentor check: {e}")
+            return False
+
+    def get_mentor_checks_by_date(self, date):
+        """Get mentor checks for a specific date."""
+        try:
+            if not self.mentor_table_id:
+                print("❌ Mentor table ID not configured")
+                return []
+            
+            # Get all rows from the mentor table
+            endpoint = f"/docs/{self.mentor_table_id}/rows"
+            response = self._make_request("GET", endpoint)
+            
+            if not response:
+                print("❌ Failed to get mentor checks from Coda")
+                return []
+            
+            mentor_checks = []
+            for row in response.get('items', []):
+                values = row.get('values', {})
+                timestamp = values.get('Timestamp', '')
+                
+                # Check if timestamp matches the requested date
+                if timestamp and date in timestamp:
+                    mentor_data = {
+                        'user_id': values.get('User ID', ''),
+                        'name': values.get('Name', ''),
+                        'mentor_response': values.get('Mentor Response', ''),
+                        'request_type': values.get('Request Type', ''),
+                        'timestamp': timestamp,
+                        'row_id': row.get('id', '')
+                    }
+                    mentor_checks.append(mentor_data)
+            
+            print(f"✅ Found {len(mentor_checks)} mentor checks for date {date}")
+            return mentor_checks
+            
+        except Exception as e:
+            print(f"❌ Error getting mentor checks by date: {e}")
+            return []

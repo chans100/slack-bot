@@ -2263,20 +2263,20 @@ class DailyStandupBot:
             # Handle manual role assignment (single role name)
             elif command in self.role_channels:
                 role = command
-            if user_id not in self.user_roles:
-                self.user_roles[user_id] = []
-            
-            if role not in self.user_roles[user_id]:
-                self.user_roles[user_id].append(role)
-                self.send_dm(user_id, f"✅ @{user_name} Added role: {role}")
+                if user_id not in self.user_roles:
+                    self.user_roles[user_id] = []
+                
+                if role not in self.user_roles[user_id]:
+                    self.user_roles[user_id].append(role)
+                    self.send_dm(user_id, f"✅ @{user_name} Added role: {role}")
+                else:
+                    self.send_dm(user_id, f"ℹ️ @{user_name} You already have the role: {role}")
+                return True
             else:
-                self.send_dm(user_id, f"ℹ️ @{user_name} You already have the role: {role}")
-            return True
-        else:
-            # Invalid command - show help
-            self.send_dm(user_id, f"❌ Invalid role command: {command}\n\nUse `/role` to see all available commands.")
-            return False
-            
+                # Invalid command - show help
+                self.send_dm(user_id, f"❌ Invalid role command: {command}\n\nUse `/role` to see all available commands.")
+                return False
+                
         except Exception as e:
             print(f"Error handling role command: {e}")
             self.send_dm(user_id, f"❌ Error processing role command: {e}")
