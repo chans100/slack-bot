@@ -21,7 +21,7 @@ class CodaService:
         """Initialize Coda service with API token and table IDs."""
         self.api_token = os.environ.get("CODA_API_TOKEN")
         self.doc_id = os.environ.get("CODA_DOC_ID")
-        self.main_table_id = BotConfig.MAIN_HEALTH_CHECK_TABLE  # Use Main_Health_Check env var
+        self.health_check_table_id = BotConfig.HEALTH_CHECK_TABLE  # Single health check table
         self.blocker_table_id = BotConfig.BLOCKER_TABLE
         self.standup_table_id = BotConfig.STANDUP_TABLE
         self.blocker_res_table_id = BotConfig.BLOCKER_RESOLUTION_TABLE
@@ -29,7 +29,6 @@ class CodaService:
         self.after_health_check_table_id = BotConfig.AFTER_HEALTH_CHECK_TABLE
         self.response_table_id = BotConfig.RESPONSE_TABLE
         self.error_table_id = BotConfig.ERROR_TABLE
-        self.mentor_table_id = BotConfig.MENTOR_TABLE  # New mentor table support
         
         if not self.api_token:
             print("❌ CODA_API_TOKEN not found in environment variables")
@@ -39,13 +38,13 @@ class CodaService:
             print("❌ CODA_DOC_ID not found in environment variables")
             return
             
-        if not self.main_table_id:
+        if not self.health_check_table_id:
             print("❌ Health_Check table ID not found in environment variables")
             return
             
         print("✅ Coda service initialized")
         print(f"   Doc ID: {self.doc_id}")
-        print(f"   Main Health Check Table ID: {self.main_table_id}")
+        print(f"   Health Check Table ID: {self.health_check_table_id}")
         print(f"   Blocker Table ID: {self.blocker_table_id}")
         print(f"   Standup Table ID: {self.standup_table_id}")
         print(f"   Blocker Resolution Table ID: {self.blocker_res_table_id}")
@@ -53,7 +52,6 @@ class CodaService:
         print(f"   Response Table ID: {self.response_table_id}")
         print(f"   KR Table ID: {self.kr_table_id}")
         print(f"   Error Table ID: {self.error_table_id}")
-        print(f"   Mentor Table ID: {self.mentor_table_id}")
         
         # Debug: Check if environment variables are loaded
         print("🔍 DEBUG: Environment variable check:")
@@ -112,9 +110,9 @@ class CodaService:
             return None
     
     def add_response(self, user_id, response, timestamp=None, username=None):
-        """Add a response to the main table."""
-        if not self.main_table_id:
-            print("❌ Main table ID not configured")
+        """Add a response to the health check table."""
+        if not self.health_check_table_id:
+            print("❌ Health check table ID not configured")
             return False
             
         if timestamp is None:
@@ -134,7 +132,7 @@ class CodaService:
             }]
         }
         
-        endpoint = f"/docs/{self.doc_id}/tables/{self.main_table_id}/rows"
+        endpoint = f"/docs/{self.doc_id}/tables/{self.health_check_table_id}/rows"
         result = self._make_request("POST", endpoint, data)
         
         if result:
@@ -144,7 +142,7 @@ class CodaService:
             print("❌ Failed to store response in Coda")
             return False
     
-    def add_blocker(self, user_id, blocker_description, kr_name, urgency, notes=None, username=None):
+    def add_blocker(self, user_id, blocker_description, kr_name, urgency, notes=None, username=None, sprint_number=None):
         """Add a blocker to the blocker table."""
         print(f"🔍 DEBUG: add_blocker called with:")
         print(f"   - user_id: {user_id}")
@@ -153,6 +151,7 @@ class CodaService:
         print(f"   - urgency: {urgency}")
         print(f"   - notes: {notes}")
         print(f"   - username: {username}")
+        print(f"   - sprint_number: {sprint_number}")
         print(f"   - blocker_table_id: {self.blocker_table_id}")
         
         if not self.blocker_table_id:
@@ -162,16 +161,23 @@ class CodaService:
         if username is None:
             username = user_id
             
+        # Prepare cells for the blocker table
+        cells = [
+            {"column": "User ID", "value": user_id},
+            {"column": "Name", "value": username},
+            {"column": "Blocker Description", "value": blocker_description},
+            {"column": "KR Name", "value": kr_name},
+            {"column": "Urgency", "value": urgency},
+            {"column": "Notes", "value": notes or ""}
+        ]
+        
+        # Add sprint number if provided
+        if sprint_number:
+            cells.append({"column": "Sprint", "value": str(sprint_number)})
+            
         data = {
             "rows": [{
-                "cells": [
-                    {"column": "User ID", "value": user_id},
-                    {"column": "Name", "value": username},
-                    {"column": "Blocker Description", "value": blocker_description},
-                    {"column": "KR Name", "value": kr_name},
-                    {"column": "Urgency", "value": urgency},
-                    {"column": "Notes", "value": notes or ""}
-                ]
+                "cells": cells
             }]
         }
         
@@ -347,11 +353,11 @@ class CodaService:
     
     def get_responses_by_date(self, date):
         """Get all responses for a specific date."""
-        if not self.main_table_id:
-            print("❌ Main table ID not configured")
+        if not self.health_check_table_id:
+            print("❌ Health check table ID not configured")
             return []
             
-        endpoint = f"/docs/{self.doc_id}/tables/{self.main_table_id}/rows"
+        endpoint = f"/docs/{self.doc_id}/tables/{self.health_check_table_id}/rows"
         result = self._make_request("GET", endpoint)
         
         if not result:
@@ -370,11 +376,11 @@ class CodaService:
     
     def get_user_responses(self, user_id, limit=10):
         """Get recent responses for a specific user."""
-        if not self.main_table_id:
-            print("❌ Main table ID not configured")
+        if not self.health_check_table_id:
+            print("❌ Health check table ID not configured")
             return []
             
-        endpoint = f"/docs/{self.doc_id}/tables/{self.main_table_id}/rows"
+        endpoint = f"/docs/{self.doc_id}/tables/{self.health_check_table_id}/rows"
         result = self._make_request("GET", endpoint)
         
         if not result:
@@ -431,14 +437,14 @@ class CodaService:
             print("❌ No Doc ID configured")
             return False
             
-        # Test main table access
-        if self.main_table_id:
-            endpoint = f"/docs/{self.doc_id}/tables/{self.main_table_id}/rows"
+        # Test health check table access
+        if self.health_check_table_id:
+            endpoint = f"/docs/{self.doc_id}/tables/{self.health_check_table_id}/rows"
             result = self._make_request("GET", endpoint)
             if result:
-                print(f"✅ Main table accessible - {len(result.get('items', []))} rows")
+                print(f"✅ Health check table accessible - {len(result.get('items', []))} rows")
             else:
-                print("❌ Main table not accessible")
+                print("❌ Health check table not accessible")
                 return False
         
         # Test blocker table access
@@ -1051,11 +1057,11 @@ class CodaService:
 
     def save_health_check(self, user_id, username, mood, share_text, is_public=True):
         """Save a health check to Coda."""
-        if not self.main_table_id:
-            print("❌ Main table ID not configured")
+        if not self.health_check_table_id:
+            print("❌ Health check table ID not configured")
             return False
             
-            timestamp = datetime.now().isoformat()
+        timestamp = datetime.now().isoformat()
             
         # Combine mood and share text into a single response
         response_text = f"{mood}"
@@ -1074,7 +1080,7 @@ class CodaService:
             }]
         }
         
-        endpoint = f"/docs/{self.doc_id}/tables/{self.main_table_id}/rows"
+        endpoint = f"/docs/{self.doc_id}/tables/{self.health_check_table_id}/rows"
         result = self._make_request("POST", endpoint, data)
         if result:
             print(f"✅ Health check saved to Coda for {username}")
@@ -1314,11 +1320,11 @@ class CodaService:
             print(f"❌ Error getting KR blocked info: {e}")
             return None
     
-    def add_blocker_to_kr(self, kr_name, blocker_description, reported_by, reported_by_id, urgency="medium", notes=""):
+    def add_blocker_to_kr(self, kr_name, blocker_description, reported_by, reported_by_id, urgency="medium", notes="", sprint_number=None):
         """Add a blocker to a KR and update the KR status to 'Blocked'."""
         try:
             # First, add the blocker to the blocker table
-            blocker_success = self.add_blocker(reported_by_id, blocker_description, kr_name, urgency, notes, reported_by)
+            blocker_success = self.add_blocker(reported_by_id, blocker_description, kr_name, urgency, notes, reported_by, sprint_number)
             
             if not blocker_success:
                 print(f"❌ Failed to add blocker to blocker table for KR '{kr_name}'")
@@ -1502,80 +1508,3 @@ class CodaService:
             print(f"❌ Error getting unresolved blockers: {e}")
             return [] 
 
-    def add_mentor_check(self, user_id, mentor_response, request_type, timestamp=None, username=None):
-        """Add a mentor check response to the mentor table."""
-        try:
-            if not self.mentor_table_id:
-                print("❌ Mentor table ID not configured")
-                return False
-            
-            if timestamp is None:
-                timestamp = datetime.now().isoformat()
-            
-            if username is None:
-                username = user_id
-            
-            data = {
-                "rows": [{
-                    "cells": [
-                        {"column": "Name", "value": username},
-                        {"column": "User ID", "value": user_id},
-                        {"column": "Mentor Response", "value": mentor_response},
-                        {"column": "Request Type", "value": request_type},
-                        {"column": "Timestamp", "value": timestamp}
-                    ]
-                }]
-            }
-            
-            endpoint = f"/docs/{self.doc_id}/tables/{self.mentor_table_id}/rows"
-            result = self._make_request("POST", endpoint, data)
-            
-            if result:
-                print(f"✅ Mentor check stored in Coda: {result.get('id', 'unknown')}")
-                return True
-            else:
-                print(f"❌ Failed to store mentor check in Coda")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Error adding mentor check: {e}")
-            return False
-
-    def get_mentor_checks_by_date(self, date):
-        """Get mentor checks for a specific date."""
-        try:
-            if not self.mentor_table_id:
-                print("❌ Mentor table ID not configured")
-                return []
-            
-            # Get all rows from the mentor table
-            endpoint = f"/docs/{self.mentor_table_id}/rows"
-            response = self._make_request("GET", endpoint)
-            
-            if not response:
-                print("❌ Failed to get mentor checks from Coda")
-                return []
-            
-            mentor_checks = []
-            for row in response.get('items', []):
-                values = row.get('values', {})
-                timestamp = values.get('Timestamp', '')
-                
-                # Check if timestamp matches the requested date
-                if timestamp and date in timestamp:
-                    mentor_data = {
-                        'user_id': values.get('User ID', ''),
-                        'name': values.get('Name', ''),
-                        'mentor_response': values.get('Mentor Response', ''),
-                        'request_type': values.get('Request Type', ''),
-                        'timestamp': timestamp,
-                        'row_id': row.get('id', '')
-                    }
-                    mentor_checks.append(mentor_data)
-            
-            print(f"✅ Found {len(mentor_checks)} mentor checks for date {date}")
-            return mentor_checks
-            
-        except Exception as e:
-            print(f"❌ Error getting mentor checks by date: {e}")
-            return []

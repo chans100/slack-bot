@@ -21,7 +21,6 @@ KR_Table=your-kr-table-id-here
 After_Health_Check=your-after-health-check-table-id-here
 Response=your-response-table-id-here
 ERROR_TABLE=your-error-table-id-here
-Mentor_Table=your-mentor-table-id-here
 
 # AI Configuration (optional)
 MISTRAL_API_KEY=your-mistral-api-key-here

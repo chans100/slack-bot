@@ -32,15 +32,14 @@ class BotConfig:
     
     # Flask Configuration
     FLASK_HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
-    # Prefer provider-assigned PORT (Render/Railway/Heroku/etc.), fallback to FLASK_PORT, then 3000
-    FLASK_PORT = int(os.environ.get("PORT") or os.environ.get("FLASK_PORT", "3000"))
+    FLASK_PORT = int(os.environ.get("FLASK_PORT", "3000"))
     FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "False") == "True"
     
     # Coda Configuration
     CODA_API_TOKEN = os.environ.get("CODA_API_TOKEN")
     CODA_DOC_ID = os.environ.get("CODA_DOC_ID")
     # Coda table IDs
-    MAIN_HEALTH_CHECK_TABLE = os.environ.get("Health_Check")
+    HEALTH_CHECK_TABLE = os.environ.get("Health_Check")
     BLOCKER_TABLE = os.environ.get("Blocker")
     STANDUP_TABLE = os.environ.get("Stand_Up")
     BLOCKER_RESOLUTION_TABLE = os.environ.get("Blocker_Resolution")
@@ -48,7 +47,6 @@ class BotConfig:
     AFTER_HEALTH_CHECK_TABLE = os.environ.get("After_Health_Check")
     RESPONSE_TABLE = os.environ.get("Response")
     ERROR_TABLE = os.environ.get("ERROR_TABLE", "error_logs")  # Fallback if not set
-    MENTOR_TABLE = os.environ.get("Mentor_Table")  # Mentor Table
     
     # AI Configuration
     MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")

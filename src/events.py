@@ -131,28 +131,7 @@ def handle_blocker_note_edit(bot, payload):
         traceback.print_exc()
         return jsonify({"response_action": "clear"})
 
-def handle_blocker_completion(bot, payload):
-    """Handle blocker completion button click."""
-    try:
-        print(f"🔍 DEBUG: handle_blocker_completion called with payload: {payload}")
-        user_id = payload['user']['id']
-        user_name = bot.get_user_name(user_id)
-        blocker_id = payload['actions'][0]['value']
-        channel_id = payload['channel']['id']
-        message_ts = payload['message']['ts']
-        
-        print(f"🔍 DEBUG: Processing blocker completion - User: {user_name}, Blocker ID: {blocker_id}, Channel: {channel_id}")
-        
-        # Call the bot's handle_blocker_completion method with resolver info
-        bot.handle_blocker_completion(blocker_id, channel_id, message_ts, resolver_id=user_id, resolver_name=user_name)
-        
-        print(f"✅ DEBUG: handle_blocker_completion completed successfully")
-        return jsonify({"response_action": "clear"})
-    except Exception as e:
-        print(f"❌ Error handling blocker completion: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"response_action": "clear"})
+
 
 def handle_complete_blocker_with_form(bot, payload):
     """Handle blocker completion with form modal."""
@@ -225,10 +204,13 @@ def handle_mentor_response(bot, payload):
                 if request_type == 'kr':
                     # User has reached out to mentor, proceed with KR request
                     search_term = bot.pending_kr_search.get(target_user_id)
-                    if search_term:
-                        # Show KR search results
+                    sprint_number = bot.pending_kr_sprint.get(target_user_id)
+                    
+                    if search_term and sprint_number:
+                        # Show KR search results with sprint filter
                         if bot.coda:
-                            matches = bot.coda.search_kr_table(search_term)
+                            # Search with both search term and sprint number for faster results
+                            matches = bot.coda.search_kr_table(f"{search_term} sprint {sprint_number}")
                             if matches:
                                 # Deduplicate KRs by name to avoid showing the same KR multiple times
                                 unique_krs = {}
@@ -239,7 +221,7 @@ def handle_mentor_response(bot, payload):
                                 
                                 # Use deduplicated results
                                 unique_matches = list(unique_krs.values())
-                                print(f"🔍 DEBUG: Found {len(matches)} total matches, {len(unique_matches)} unique KRs")
+                                print(f"🔍 DEBUG: Found {len(matches)} total matches, {len(unique_matches)} unique KRs for sprint {sprint_number}")
                                 
                                 # Delete the original mentor check message first
                                 print(f"🔍 DEBUG: Deleting mentor check message")
@@ -247,7 +229,7 @@ def handle_mentor_response(bot, payload):
                                     bot.update_message(
                                         channel_id=channel_id,
                                         ts=message_ts,
-                                        text=f"✅ Found {len(unique_matches)} unique KRs for '{search_term}':"
+                                        text=f"✅ Found {len(unique_matches)} unique KRs for '{search_term}' in Sprint {sprint_number}:"
                                     )
                                 except Exception as e:
                                     print(f"❌ Error updating mentor check message: {e}")
@@ -275,7 +257,7 @@ def handle_mentor_response(bot, payload):
                                         print(f"❌ Error sending KR {i} message: {e}")
                             else:
                                 # No matches found
-                                result_text = f'No matching KRs found for "{search_term}".'
+                                result_text = f'No matching KRs found for "{search_term}" in Sprint {sprint_number}.'
                                 print(f"🔍 DEBUG: No matches found, updating mentor check message")
                                 bot.update_message(
                                     channel_id=channel_id,
@@ -287,18 +269,19 @@ def handle_mentor_response(bot, payload):
                             bot.update_message(
                                 channel_id=channel_id,
                                 ts=message_ts,
-                                text=f"Great! Let me help you with your KR request: {search_term}"
+                                text=f"Great! Let me help you with your KR request: {search_term} in Sprint {sprint_number}"
                             )
                         
-                        # Clear the pending search
+                        # Clear the pending search and sprint
                         bot.pending_kr_search.pop(target_user_id, None)
+                        bot.pending_kr_sprint.pop(target_user_id, None)
                     else:
-                        # No search term provided, delete mentor check and replace with prompt
-                        bot.update_message(
-                            channel_id=channel_id,
-                            ts=message_ts,
-                            text="What KR would you like to search for? Please type `/kr [search term]` or `!kr [search term]`."
-                        )
+                        # No search term or sprint number, show KR form
+                        bot.send_dm(target_user_id, "Great! Let me help you with your KR request. Please use `/kr (sprint_number) (kr_name)` to specify a sprint number and KR name.")
+                        
+                        # Clear any pending data
+                        bot.pending_kr_search.pop(target_user_id, None)
+                        bot.pending_kr_sprint.pop(target_user_id, None)
                 elif request_type == 'blocker':
                     # User has reached out to mentor, proceed with blocker form
                     # Send a new message with the blocker button instead of updating
@@ -571,6 +554,10 @@ def handle_view_submission(bot, payload):
             return handle_blocker_completion_submission(bot, payload)
         elif callback_id == 'blocker_resolution_submit':
             return handle_blocker_resolution_submission(bot, payload)
+        elif callback_id == 'blocker_direct_resolution_submit':
+            return handle_blocker_direct_resolution_submission(bot, payload)
+        elif callback_id == 'blocker_channel_resolution_submit':
+            return handle_blocker_channel_resolution_submission(bot, payload)
         elif callback_id == 'blocker_sprint_modal':
             return handle_blocker_sprint_modal_submission(bot, payload)
         else:
@@ -1354,9 +1341,7 @@ def handle_interactive_components(bot, payload):
         # Route to appropriate handler
         if action_id == 'edit_blocker_note':
             return safe_executor.execute(handle_blocker_note_edit, "handle_interactive_components", user_id, bot=bot, payload=payload)
-        elif action_id == 'complete_blocker':
-            return safe_executor.execute(handle_blocker_completion, "handle_interactive_components", user_id, bot=bot, payload=payload)
-        elif action_id == 'complete_blocker_with_form':
+        elif action_id in ['complete_blocker', 'complete_blocker_with_form']:
             return safe_executor.execute(handle_complete_blocker_with_form, "handle_interactive_components", user_id, bot=bot, payload=payload)
         elif action_id in ['great', 'okay', 'not_great']:
             return safe_executor.execute(handle_health_response, "handle_interactive_components", user_id, bot=bot, payload=payload)
@@ -1396,6 +1381,16 @@ def handle_interactive_components(bot, payload):
             return safe_executor.execute(handle_view_all_blockers, "handle_interactive_components", user_id, bot=bot, payload=payload)
         elif action_id == 'open_blocker_sprint_modal':
             return safe_executor.execute(handle_open_blocker_sprint_modal, "handle_interactive_components", user_id, bot=bot, payload=payload)
+        elif action_id == 'open_kr_continue_modal':
+            return safe_executor.execute(handle_open_kr_continue_modal, "handle_interactive_components", user_id, bot=bot, payload=payload)
+        elif action_id == 'open_blocker_continue_modal':
+            return safe_executor.execute(handle_open_blocker_continue_modal, "handle_interactive_components", user_id, bot=bot, payload=payload)
+        elif action_id == 'view_blockers_with_sprint':
+            return safe_executor.execute(handle_view_blockers_with_sprint, "handle_interactive_components", user_id, bot=bot, payload=payload)
+        elif action_id == 'kr_continue_submit':
+            return safe_executor.execute(handle_kr_continue_submit, "handle_interactive_components", user_id, bot=bot, payload=payload)
+        elif action_id == 'blocker_continue_submit':
+            return safe_executor.execute(handle_blocker_continue_submit, "handle_interactive_components", user_id, bot=bot, payload=payload)
         else:
             logger.warning(f"Unhandled action_id: {action_id}")
             return jsonify({"text": "OK"})
@@ -1635,50 +1630,33 @@ def handle_mark_resolved(bot, payload):
             )
             
         elif parts[0] == 'resolve' and len(parts) >= 2:
-            # From channel escalation - direct resolution
+            # From channel escalation - open resolution modal
             blocker_id = parts[1]
             
-            # Update message to show resolution
-            updated_text = f"✅ *Blocker has been resolved by @{user_name}*\n\n"
-            updated_text += f"*Resolved by:* @{user_name}\n"
-            updated_text += f"*Status:* Complete"
+            # Open resolution modal to get resolution notes
+            trigger_id = payload['trigger_id']
+            blocks = [
+                {
+                    "type": "input",
+                    "block_id": "resolution_notes",
+                    "label": {"type": "plain_text", "text": "Resolution Notes"},
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "resolution_notes_input",
+                        "multiline": True,
+                        "placeholder": {"type": "plain_text", "text": "How was this blocker resolved? What was the solution?"}
+                    }
+                }
+            ]
             
-            bot.update_message(channel_id, message_ts, updated_text)
-            
-            # Update Coda and notify blocked user if we have blocker info
-            if hasattr(bot, 'active_blockers') and blocker_id in bot.active_blockers:
-                blocker_info = bot.active_blockers[blocker_id]
-                blocked_user_id = blocker_info['user_id']
-                kr_name = blocker_info['kr_name']
-                
-                # Update Coda
-                if bot.coda:
-                    try:
-                        bot.coda.mark_blocker_complete(row_id=blocker_id, resolution_notes="Resolved via channel escalation")
-                        bot.coda.resolve_blocker_from_kr(kr_name=kr_name, resolution_notes="Resolved via channel escalation")
-                        
-                        # Send completion notification to leads channel
-                        try:
-                            from datetime import datetime
-                            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            
-                            completion_message = f"🎉 *Blocker Resolved* - @{user_name} has successfully resolved a blocker!"
-                            completion_message += f"\n• *KR:* {kr_name}"
-                            completion_message += f"\n• *Resolved by:* @{user_name}"
-                            completion_message += f"\n• *Resolved at:* {current_time}"
-                            completion_message += f"\n• *Resolution notes:* Resolved via channel escalation"
-                            completion_message += f"\n• *Status:* KR status updated to 'Unblocked' in Coda"
-                            
-                            bot.send_completion_message_to_accessible_channel(completion_message)
-                            print(f"✅ Sent completion message to leads channel")
-                        except Exception as channel_error:
-                            print(f"⚠️ Error sending completion message to channel: {channel_error}")
-                        
-                    except Exception as e:
-                        print(f"❌ Error updating Coda: {e}")
-                
-                # Notify the blocked user via DM
-                bot.send_dm(blocked_user_id, f"🎉 Your blocker for {kr_name} has been resolved by @{user_name}!")
+            bot.open_modal(
+                trigger_id=trigger_id,
+                title="Resolve Blocker",
+                blocks=blocks,
+                submit_text="Mark Resolved",
+                callback_id="blocker_channel_resolution_submit",
+                private_metadata=f"{blocker_id}_{channel_id}_{message_ts}"
+            )
         
         return jsonify({"text": "OK"})
     except Exception as e:
@@ -2461,7 +2439,6 @@ def handle_blocker_resolution_submission(bot, payload):
                             completion_message = f"🎉 *Blocker Resolved* - @{user_name} has successfully resolved a blocker!"
                             completion_message += f"\n• *KR:* {kr_name}"
                             completion_message += f"\n• *Resolved by:* @{user_name}"
-                            completion_message += f"\n• *Resolved at:* {current_time}"
                             completion_message += f"\n• *Resolution notes:* {resolution_notes}"
                             completion_message += f"\n• *Status:* Blocker marked complete in Coda"
                             
@@ -2489,7 +2466,6 @@ def handle_blocker_resolution_submission(bot, payload):
             
             # Send confirmation DM
             confirmation_text = f"✅ Blocker resolved!\n\n"
-            confirmation_text += f"*KR:* {kr_name}\n"
             confirmation_text += f"*Resolution Notes:* {resolution_notes}\n"
             confirmation_text += f"*Resolved by:* @{user_name}"
             
@@ -2500,6 +2476,165 @@ def handle_blocker_resolution_submission(bot, payload):
         return jsonify({"response_action": "clear"})
     except Exception as e:
         print(f"Error handling blocker resolution submission: {e}")
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})
+
+def handle_blocker_direct_resolution_submission(bot, payload):
+    """Handle blocker direct resolution modal submission from channel buttons."""
+    try:
+        user_id = payload['user']['id']
+        user_name = bot.get_user_name(user_id)
+        values = payload['view']['state']['values']
+        private_metadata = payload['view']['private_metadata']
+        
+        # Extract form data
+        resolution_notes = values.get('resolution_notes', {}).get('resolution_notes_input', {}).get('value', '')
+        
+        # Parse private_metadata: blocked_user_id_kr_name_resolver_id_channel_id_message_ts
+        parts = private_metadata.split('_')
+        if len(parts) >= 5:
+            blocked_user_id = parts[0]
+            kr_name = parts[1]
+            resolver_id = parts[2]
+            channel_id = parts[3]
+            message_ts = parts[4]
+            
+            # Update message to show resolution
+            updated_text = f"✅ *Blocker for {kr_name} has been resolved by @{user_name}*\n\n"
+            updated_text += f"*Resolved by:* @{user_name}\n"
+            updated_text += f"*Resolution notes:* {resolution_notes}\n"
+            updated_text += f"*Status:* Complete"
+            
+            bot.update_message(channel_id, message_ts, updated_text)
+            
+            # Notify the blocked user via DM
+            bot.send_dm(blocked_user_id, f"🎉 Your blocker for {kr_name} has been resolved by @{user_name}!")
+            
+            # Update in Coda if available
+            if bot.coda:
+                try:
+                    # Mark blocker as complete (we'll need to find the actual blocker ID)
+                    # For now, we'll update the KR status
+                    kr_success = bot.coda.resolve_blocker_from_kr(
+                        kr_name=kr_name,
+                        resolution_notes=resolution_notes
+                    )
+                    if kr_success:
+                        print(f"✅ KR status updated to 'Unblocked' for {kr_name}")
+                    else:
+                        print(f"⚠️ Failed to update KR status for {kr_name}")
+                        
+                    # Send completion notification to leads channel
+                    try:
+                        from datetime import datetime
+                        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        completion_message = f"🎉 *Blocker Resolved* - @{user_name} has successfully resolved a blocker!"
+                        completion_message += f"\n• *KR:* {kr_name}"
+                        completion_message += f"\n• *Resolved by:* @{user_name}"
+                        completion_message += f"\n• *Resolved at:* {current_time}"
+                        completion_message += f"\n• *Resolution notes:* {resolution_notes}"
+                        completion_message += f"\n• *Status:* KR status updated to 'Unblocked' in Coda"
+                        
+                        bot.send_completion_message_to_accessible_channel(completion_message)
+                        print(f"✅ Sent completion message to leads channel")
+                    except Exception as channel_error:
+                        print(f"⚠️ Error sending completion message to channel: {channel_error}")
+                        
+                except Exception as e:
+                    print(f"❌ Error updating Coda: {e}")
+            
+            print(f"✅ Blocker resolved by {user_name}")
+            
+            # Send confirmation DM to resolver
+            confirmation_text = f"✅ Blocker resolved!\n\n"
+            confirmation_text += f"*KR:* {kr_name}\n"
+            confirmation_text += f"*Resolution Notes:* {resolution_notes}\n"
+            confirmation_text += f"*Resolved by:* @{user_name}"
+            
+            bot.send_dm(user_id, confirmation_text)
+        
+        # Return proper Flask response
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})
+    except Exception as e:
+        print(f"Error handling blocker direct resolution submission: {e}")
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})
+
+def handle_blocker_channel_resolution_submission(bot, payload):
+    """Handle blocker channel resolution modal submission."""
+    try:
+        user_id = payload['user']['id']
+        user_name = bot.get_user_name(user_id)
+        values = payload['view']['state']['values']
+        private_metadata = payload['view']['private_metadata']
+        
+        # Extract form data
+        resolution_notes = values.get('resolution_notes', {}).get('resolution_notes_input', {}).get('value', '')
+        
+        # Parse private_metadata: blocker_id_channel_id_message_ts
+        parts = private_metadata.split('_')
+        if len(parts) >= 3:
+            blocker_id = parts[0]
+            channel_id = parts[1]
+            message_ts = parts[2]
+            
+            # Update message to show resolution
+            updated_text = f"✅ *Blocker has been resolved by @{user_name}*\n\n"
+            updated_text += f"*Resolved by:* @{user_name}\n"
+            updated_text += f"*Resolution notes:* {resolution_notes}\n"
+            updated_text += f"*Status:* Complete"
+            
+            bot.update_message(channel_id, message_ts, updated_text)
+            
+            # Update Coda and notify blocked user if we have blocker info
+            if hasattr(bot, 'active_blockers') and blocker_id in bot.active_blockers:
+                blocker_info = bot.active_blockers[blocker_id]
+                blocked_user_id = blocker_info['user_id']
+                kr_name = blocker_info['kr_name']
+                
+                # Update Coda
+                if bot.coda:
+                    try:
+                        bot.coda.mark_blocker_complete(row_id=blocker_id, resolution_notes=resolution_notes)
+                        bot.coda.resolve_blocker_from_kr(kr_name=kr_name, resolution_notes=resolution_notes)
+                        
+                        # Send completion notification to leads channel
+                        try:
+                            from datetime import datetime
+                            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            completion_message = f"🎉 *Blocker Resolved* - @{user_name} has successfully resolved a blocker!"
+                            completion_message += f"\n• *KR:* {kr_name}"
+                            completion_message += f"\n• *Resolved by:* @{user_name}"
+                            completion_message += f"\n• *Resolved at:* {current_time}"
+                            completion_message += f"\n• *Resolution notes:* {resolution_notes}"
+                            completion_message += f"\n• *Status:* KR status updated to 'Unblocked' in Coda"
+                            
+                            bot.send_completion_message_to_accessible_channel(completion_message)
+                            print(f"✅ Sent completion message to leads channel")
+                        except Exception as channel_error:
+                            print(f"⚠️ Error sending completion message to channel: {channel_error}")
+                        
+                    except Exception as e:
+                        print(f"❌ Error updating Coda: {e}")
+                
+                # Notify the blocked user via DM
+                bot.send_dm(blocked_user_id, f"🎉 Your blocker for {kr_name} has been resolved by @{user_name}!")
+            
+            # Send confirmation DM to resolver
+            confirmation_text = f"✅ Blocker resolved!\n\n"
+            confirmation_text += f"*Resolution Notes:* {resolution_notes}\n"
+            confirmation_text += f"*Resolved by:* @{user_name}"
+            
+            bot.send_dm(user_id, confirmation_text)
+        
+        # Return proper Flask response
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})
+    except Exception as e:
+        print(f"Error handling blocker channel resolution submission: {e}")
         from flask import jsonify
         return jsonify({"response_action": "clear"})
 
@@ -2542,6 +2677,16 @@ def handle_open_blocker_report_modal(bot, payload):
         
         # Create modal blocks (same structure as checkin)
         modal_blocks = [
+            {
+                "type": "input",
+                "block_id": "sprint_number",
+                "label": {"type": "plain_text", "text": "Sprint Number"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "sprint_number_input",
+                    "placeholder": {"type": "plain_text", "text": "e.g., 5"}
+                }
+            },
             {
                 "type": "input",
                 "block_id": "blocker_description",
@@ -2587,9 +2732,9 @@ def handle_open_blocker_report_modal(bot, payload):
                     "type": "plain_text_input",
                     "action_id": "notes_input",
                     "multiline": True,
-                    "placeholder": {"type": "plain_text", "text": "Any additional context or details..."}
-                },
-                "optional": True
+                    "placeholder": {"type": "plain_text", "text": "Any additional context or details..."},
+                    "optional": True
+                }
             }
         ]
         
@@ -2626,28 +2771,50 @@ def handle_submit_blocker_form(bot, payload):
         values = state.get('values', {})
         
         # Extract the form fields
+        sprint_number = values.get('sprint_number', {}).get('sprint_number_input', {}).get('value', '')
         kr_name = values.get('kr_name', {}).get('kr_name_input', {}).get('value', '')
         blocker_description = values.get('blocker_description', {}).get('blocker_description_input', {}).get('value', '')
         urgency = values.get('urgency', {}).get('urgency_select', {}).get('selected_option', {}).get('value', 'medium')
         notes = values.get('notes', {}).get('notes_input', {}).get('value', '')
         
-        print(f"🔍 DEBUG: Form data - KR: {kr_name}, Description: {blocker_description}, Urgency: {urgency}, Notes: {notes}")
+        print(f"🔍 DEBUG: Form data - Sprint: {sprint_number}, KR: {kr_name}, Description: {blocker_description}, Urgency: {urgency}, Notes: {notes}")
         
-        if not kr_name or not blocker_description:
-            # Send error message
-            error_message = "❌ Please fill in both KR Name and Description fields."
+        # Validate required fields
+        missing_fields = []
+        if not sprint_number:
+            missing_fields.append("Sprint Number")
+        if not kr_name:
+            missing_fields.append("KR Name")
+        if not blocker_description:
+            missing_fields.append("Description")
+        
+        if missing_fields:
+            # Store the data for field memory and ask user to complete missing fields
+            bot.store_blocker_pending_data(
+                user_id,
+                sprint_number=sprint_number,
+                kr_name=kr_name,
+                blocker_description=blocker_description,
+                urgency=urgency,
+                notes=notes
+            )
+            
+            error_message = f"❌ *Missing Required Fields*\n\nPlease complete the following fields:\n• {', '.join(missing_fields)}\n\nYour progress has been saved. Use `/blocker` again to continue."
             bot.update_message(channel_id, message_ts, error_message)
             return jsonify({"response_action": "clear"})
         
         # Check for duplicate submission
-        data_hash = f"{blocker_description[:50]}_{kr_name[:50]}_{urgency}_{notes[:50]}"
+        data_hash = f"{sprint_number}_{blocker_description[:50]}_{kr_name[:50]}_{urgency}_{notes[:50]}"
         if not track_submission(user_id, "submit_blocker_form", data_hash):
             bot.update_message(channel_id, message_ts, "⚠️ This blocker submission was already processed. Please wait a moment before trying again.")
             return jsonify({"response_action": "clear"})
         
         # Update the message with immediate confirmation
-        immediate_message = f"✅ *Blocker Report Submitted!*\n\n*KR:* {kr_name}\n*Description:* {blocker_description}\n*Urgency:* {urgency.title()}\n*Notes:* {notes if notes else 'None'}\n\nProcessing in background..."
+        immediate_message = f"✅ *Blocker Report Submitted!*\n\n*Sprint:* {sprint_number}\n*KR:* {kr_name}\n*Description:* {blocker_description}\n*Urgency:* {urgency.title()}\n*Notes:* {notes if notes else 'None'}\n\nProcessing in background..."
         bot.update_message(channel_id, message_ts, immediate_message)
+        
+        # Clear pending data since submission is complete
+        bot.clear_pending_data(user_id, 'blocker')
         
         # Process the blocker submission in background thread
         def escalate_in_background():
@@ -2658,11 +2825,12 @@ def handle_submit_blocker_form(bot, payload):
                     blocker_description=blocker_description,
                     kr_name=kr_name,
                     urgency=urgency,
-                    notes=notes
+                    notes=notes,
+                    sprint_number=sprint_number
                 )
                 
                 # Update the message with success
-                success_message = f"✅ *Blocker Report Processed Successfully!*\n\n*KR:* {kr_name}\n*Description:* {blocker_description}\n*Urgency:* {urgency.title()}\n*Notes:* {notes if notes else 'None'}\n\nYour blocker has been escalated to your team leads."
+                success_message = f"✅ *Blocker Report Processed Successfully!*\n\n*Sprint:* {sprint_number}\n*KR:* {kr_name}\n*Description:* {blocker_description}\n*Urgency:* {urgency.title()}\n*Notes:* {notes if notes else 'None'}\n\nYour blocker has been escalated to your team leads."
                 bot.update_message(channel_id, message_ts, success_message)
                 
                 print(f"✅ Blocker form submitted successfully for {user_name}")
@@ -3076,3 +3244,444 @@ def handle_open_blocker_sprint_modal(bot, payload):
     except Exception as e:
         print(f"❌ Error in open blocker sprint modal handler: {e}")
         return jsonify({"text": "OK"})
+
+def handle_open_kr_continue_modal(bot, payload):
+    """Handle 'Continue KR' button click - open full KR modal with pre-filled data."""
+    try:
+        trigger_id = payload.get('trigger_id')
+        if not trigger_id:
+            print(f"❌ DEBUG: No trigger_id found in payload")
+            return jsonify({"text": "OK"})
+        
+        user_id = payload.get('user', {}).get('id')
+        if not user_id:
+            print(f"❌ DEBUG: No user_id found in payload")
+            return jsonify({"text": "OK"})
+        
+        # Get the pending KR data for this user
+        pending_data = bot.pending_kr_search.get(user_id, {})
+        
+        if not pending_data:
+            bot.send_dm(user_id, "No pending KR data found. Please start a new KR request.")
+            return jsonify({"text": "OK"})
+        
+        # Create the full KR modal with pre-filled data
+        blocks = [
+            {
+                "type": "input",
+                "block_id": "search_term",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Search Term"
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "search_term",
+                    "initial_value": pending_data.get("search_term", ""),
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Enter search term for KR"
+                    }
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "sprint_number",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Sprint Number"
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "sprint_number",
+                    "initial_value": str(pending_data.get("sprint_number", "")),
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Enter sprint number"
+                    }
+                }
+            }
+        ]
+        
+        # Open the full KR modal
+        success = bot.open_modal(
+            trigger_id=trigger_id,
+            title="Continue KR Entry",
+            blocks=blocks,
+            submit_text="Submit",
+            callback_id="kr_continue_submit"
+        )
+        
+        if success:
+            print(f"✅ DEBUG: KR continue modal opened successfully with pre-filled data")
+        else:
+            print(f"❌ DEBUG: Failed to open KR continue modal")
+        
+        return jsonify({"text": "OK"})
+        
+    except Exception as e:
+        print(f"❌ Error in open kr continue modal handler: {e}")
+        return jsonify({"text": "OK"})
+
+def handle_open_blocker_continue_modal(bot, payload):
+    """Handle 'Continue Blocker' button click - open full blocker modal with pre-filled data."""
+    try:
+        trigger_id = payload.get('trigger_id')
+        if not trigger_id:
+            print(f"❌ DEBUG: No trigger_id found in payload")
+            return jsonify({"text": "OK"})
+        
+        user_id = payload.get('user', {}).get('id')
+        if not user_id:
+            print(f"❌ DEBUG: No user_id found in payload")
+            return jsonify({"text": "OK"})
+        
+        # Get the pending blocker data for this user
+        pending_data = bot.pending_blocker_sprint.get(user_id, {})
+        
+        if not pending_data:
+            bot.send_dm(user_id, "No pending blocker data found. Please start a new blocker request.")
+            return jsonify({"text": "OK"})
+        
+        # Create the full blocker modal with pre-filled data
+        blocks = [
+            {
+                "type": "input",
+                "block_id": "kr_name",
+                "label": {
+                    "type": "plain_text",
+                    "text": "KR Name"
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "kr_name",
+                    "initial_value": pending_data.get("kr_name", ""),
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Enter the KR name"
+                    }
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "blocker_description",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Blocker Description"
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "blocker_description",
+                    "initial_value": pending_data.get("blocker_description", ""),
+                    "multiline": True,
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Describe the blocker"
+                    }
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "urgency",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Urgency"
+                },
+                "element": {
+                    "type": "static_select",
+                    "action_id": "urgency",
+                    "initial_option": {
+                        "text": {"type": "plain_text", "text": pending_data.get("urgency", "medium").title()},
+                        "value": pending_data.get("urgency", "medium")
+                    },
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Select urgency level"
+                    },
+                    "options": [
+                        {
+                            "text": {"type": "plain_text", "text": "Low"},
+                            "value": "low"
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "Medium"},
+                            "value": "medium"
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "High"},
+                            "value": "high"
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "Critical"},
+                            "value": "critical"
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "notes",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Notes (Optional)"
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "notes",
+                    "initial_value": pending_data.get("notes", ""),
+                    "multiline": True,
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Additional notes or context"
+                    }
+                },
+                "optional": True
+            },
+            {
+                "type": "input",
+                "block_id": "sprint_number",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Sprint Number"
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "sprint_number",
+                    "initial_value": str(pending_data.get("sprint_number", "")),
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Enter sprint number"
+                    }
+                }
+            }
+        ]
+        
+        # Open the full blocker modal
+        success = bot.open_modal(
+            trigger_id=trigger_id,
+            title="Continue Blocker Entry",
+            blocks=blocks,
+            submit_text="Submit",
+            callback_id="blocker_continue_submit"
+        )
+        
+        if success:
+            print(f"✅ DEBUG: Blocker continue modal opened successfully with pre-filled data")
+        else:
+            print(f"❌ DEBUG: Failed to open blocker continue modal")
+        
+        return jsonify({"text": "OK"})
+        
+    except Exception as e:
+        print(f"❌ Error in open blocker continue modal handler: {e}")
+        return jsonify({"text": "OK"})
+
+def handle_view_blockers_with_sprint(bot, payload):
+    """Handle 'View Blockers with Sprint' button click - show blockers filtered by sprint."""
+    try:
+        import threading
+        
+        def process_view_blockers_with_sprint():
+            try:
+                user_id = payload['user']['id']
+                user_name = bot.get_user_name(user_id)
+                values = payload['view']['state']['values']
+                
+                # Extract sprint number from form
+                sprint_input = values.get('sprint_input', {}).get('sprint_number', {})
+                sprint_number = sprint_input.get('value', '').strip()
+                
+                print(f"🔍 DEBUG: Processing view blockers with sprint command for user {user_name}, sprint: '{sprint_number}'")
+                
+                # Get user's blockers filtered by sprint
+                try:
+                    blockers = bot.coda.get_user_blockers_by_sprint(user_id, sprint_number if sprint_number else None)
+                    print(f"🔍 DEBUG: Blockers fetched: {len(blockers)} blockers")
+                    
+                    if not blockers:
+                        sprint_text = f" in Sprint {sprint_number}" if sprint_number else ""
+                        bot.send_dm(user_id, f"You have no active blockers{sprint_text}.")
+                        return
+                    
+                    # Create blocks for each blocker
+                    blocks = []
+                    sprint_text = f" (Sprint {sprint_number})" if sprint_number else ""
+                    
+                    for idx, blocker in enumerate(blockers, 1):
+                        block_text = f"*Blocker {idx}:{sprint_text}\\n*KR:* {blocker['kr_name']}\\n*Description:* {blocker['blocker_description']}\\n*Urgency:* {blocker['urgency']}\\n*Notes:* {blocker['notes']}"
+                        blocks.append({
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": block_text},
+                            "block_id": f"blocker_{blocker['row_id']}"
+                        })
+                        blocks.append({
+                            "type": "actions",
+                            "block_id": f"actions_{blocker['row_id']}",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {"type": "plain_text", "text": "Add/Edit Note"},
+                                    "action_id": "edit_blocker_note",
+                                    "value": blocker['row_id']
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {"type": "plain_text", "text": "Update Progress"},
+                                    "action_id": "update_progress",
+                                    "value": f"blocker_{blocker['row_id']}_{blocker['kr_name']}"
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {"type": "plain_text", "text": "Mark Resolved"},
+                                    "style": "primary",
+                                    "action_id": "mark_resolved",
+                                    "value": f"blocker_{blocker['row_id']}_{blocker['kr_name']}"
+                                }
+                            ]
+                        })
+                    
+                    sprint_header = f" (Sprint {sprint_number})" if sprint_number else ""
+                    print(f"🔍 DEBUG: Sending blocker list with blocks: {len(blocks)} blocks")
+                    bot.send_dm(user_id, f"Here are your current blockers{sprint_header}:", blocks=blocks)
+                    
+                except Exception as e:
+                    print(f"❌ Error getting blockers: {e}")
+                    bot.send_dm(user_id, "❌ Error retrieving your blockers. Please try again.")
+                        
+            except Exception as e:
+                print(f"❌ Error in background view blockers with sprint processing: {e}")
+                bot.send_dm(user_id, "❌ Error processing blocker command. Please try again.")
+        
+        thread = threading.Thread(target=process_view_blockers_with_sprint)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({"response_action": "clear"})
+        
+    except Exception as e:
+        print(f"❌ Error in view blockers with sprint handler: {e}")
+        return jsonify({"response_action": "clear"})
+
+def handle_kr_continue_submit(bot, payload):
+    """Handle KR continue submit form submission."""
+    try:
+        user_id = payload['user']['id']
+        user_name = bot.get_user_name(user_id)
+        values = payload['view']['state']['values']
+        
+        # Extract form data
+        search_term = values.get('search_term', {}).get('search_term', {}).get('value', '').strip()
+        sprint_number = values.get('sprint_number', {}).get('sprint_number', {}).get('value', '').strip()
+        
+        print(f"🔍 DEBUG: KR continue submit - search_term: '{search_term}', sprint_number: '{sprint_number}'")
+        
+        # Validate required fields
+        if not search_term:
+            bot.send_dm(user_id, "❌ Search term is required. Please try again.")
+            return jsonify({"response_action": "clear"})
+        
+        if not sprint_number:
+            bot.send_dm(user_id, "❌ Sprint number is required. Please try again.")
+            return jsonify({"response_action": "clear"})
+        
+        # Clear pending data since we're processing the complete form
+        bot.clear_pending_data(user_id, 'kr')
+        
+        # Process the KR request with the complete data
+        try:
+            # Search for KR in Coda
+            if bot.coda:
+                search_results = bot.coda.search_kr_table(f"{search_term} sprint {sprint_number}")
+                
+                if search_results:
+                    # Format and send results
+                    result_text = f"✅ *KR found for Sprint {sprint_number}!*\n\n"
+                    for result in search_results[:5]:  # Limit to 5 results
+                        result_text += f"• *{result.get('name', 'Unknown')}*\n"
+                        if result.get('owner'):
+                            result_text += f"  Owner: {result['owner']}\n"
+                        if result.get('status'):
+                            result_text += f"  Status: {result['status']}\n"
+                        result_text += "\n"
+                    
+                    bot.send_dm(user_id, result_text)
+                else:
+                    bot.send_dm(user_id, f"❌ No KR found matching '{search_term}' in Sprint {sprint_number}. Please check your search term and sprint number.")
+            else:
+                bot.send_dm(user_id, f"✅ KR request submitted!\n\n*Search Term:* {search_term}\n*Sprint:* {sprint_number}")
+                
+        except Exception as e:
+            print(f"❌ Error processing KR request: {e}")
+            bot.send_dm(user_id, "❌ Error processing KR request. Please try again.")
+        
+        # Return proper Flask response
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})
+        
+    except Exception as e:
+        print(f"Error handling KR continue submit: {e}")
+        bot.send_dm(user_id, "❌ Error processing KR continue. Please try again.")
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})
+
+def handle_blocker_continue_submit(bot, payload):
+    """Handle blocker continue submit form submission."""
+    try:
+        user_id = payload['user']['id']
+        user_name = bot.get_user_name(user_id)
+        values = payload['view']['state']['values']
+        
+        # Extract form data
+        kr_name = values.get('kr_name', {}).get('kr_name', {}).get('value', '').strip()
+        blocker_description = values.get('blocker_description', {}).get('blocker_description', {}).get('value', '').strip()
+        urgency = values.get('urgency', {}).get('urgency', {}).get('selected_option', {}).get('value', 'medium')
+        notes = values.get('notes', {}).get('notes', {}).get('value', '').strip()
+        sprint_number = values.get('sprint_number', {}).get('sprint_number', {}).get('value', '').strip()
+        
+        print(f"🔍 DEBUG: Blocker continue submit - kr_name: '{kr_name}', description: '{blocker_description[:50]}...', urgency: '{urgency}', sprint: '{sprint_number}'")
+        
+        # Validate required fields
+        if not kr_name:
+            bot.send_dm(user_id, "❌ KR name is required. Please try again.")
+            return jsonify({"response_action": "clear"})
+        
+        if not blocker_description:
+            bot.send_dm(user_id, "❌ Blocker description is required. Please try again.")
+            return jsonify({"response_action": "clear"})
+        
+        if not sprint_number:
+            bot.send_dm(user_id, "❌ Sprint number is required. Please try again.")
+            return jsonify({"response_action": "clear"})
+        
+        # Clear pending data since we're processing the complete form
+        bot.clear_pending_data(user_id, 'blocker')
+        
+        # Process the blocker submission with the complete data
+        try:
+            # Escalate the blocker to the channel
+            bot.escalate_blocker_with_details(
+                user_id=user_id,
+                user_name=user_name,
+                blocker_description=blocker_description,
+                kr_name=kr_name,
+                urgency=urgency,
+                notes=notes,
+                sprint_number=sprint_number
+            )
+            
+            # Send confirmation to user
+            bot.send_dm(user_id, f"✅ Blocker submitted successfully!\n\n*KR:* {kr_name}\n*Description:* {blocker_description}\n*Urgency:* {urgency.title()}\n*Sprint:* {sprint_number}\n\nYour blocker has been escalated to the team.")
+            
+        except Exception as e:
+            print(f"❌ Error processing blocker submission: {e}")
+            bot.send_dm(user_id, "❌ Error processing blocker submission. Please try again.")
+        
+        # Return proper Flask response
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})
+        
+    except Exception as e:
+        print(f"Error handling blocker continue submit: {e}")
+        bot.send_dm(user_id, "❌ Error processing blocker continue. Please try again.")
+        from flask import jsonify
+        return jsonify({"response_action": "clear"})

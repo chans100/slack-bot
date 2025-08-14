@@ -61,7 +61,7 @@ def _handle_help_command(bot, user_id, channel_id):
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "• `/checkin` — Start your daily standup\n• `/health` — Send a health check prompt\n• `/kr [search]` — Search for a Key Result\n• `/blocked` — Report a new blocker\n• `/blocker` — View your current blockers"
+                "text": "• `/checkin` — Start your daily standup\n• `/health` — Send a health check prompt\n• `/kr (sprint) (kr_name)` — Search for a Key Result in a specific sprint\n• `/blocked` — Report a new blocker\n• `/blocker` — View your current blockers"
             }
         },
         {
@@ -111,7 +111,7 @@ def _handle_help_command(bot, user_id, channel_id):
     return True
 
 def _handle_kr_command(bot, user_id, text, channel_id):
-    """Handle /kr command."""
+    """Handle /kr command with sprint number requirement and field memory."""
     try:
         import threading
         def process_kr_command():
@@ -123,15 +123,44 @@ def _handle_kr_command(bot, user_id, text, channel_id):
                 except Exception as e:
                     print(f"❌ Error getting user info: {e}")
                     user_name = f"User {user_id}"
-                # Always trigger mentor check, pass search_term if present
-                bot.send_mentor_check(
-                    user_id=user_id,
-                    standup_ts=None,  # No thread for slash commands
-                    user_name=user_name,
-                    request_type="kr",
-                    channel=user_id,
-                    search_term=text if text else None  # Pass search term if present
-                )
+                
+                # Check if user has pending KR data to continue
+                if hasattr(bot, 'pending_kr_search') and user_id in bot.pending_kr_search:
+                    pending_data = bot.pending_kr_search[user_id]
+                    bot.send_kr_continue_form(user_id, user_name, pending_data)
+                else:
+                    # Parse command text for sprint number and KR name
+                    parts = text.split() if text else []
+                    sprint_number = None
+                    search_term = None
+                    
+                    if parts:
+                        # First part should be sprint number
+                        try:
+                            sprint_number = int(parts[0])
+                            # Everything after sprint number is the KR search term
+                            if len(parts) > 1:
+                                search_term = ' '.join(parts[1:])
+                        except ValueError:
+                            # If first part isn't a number, show error
+                            bot.send_dm(user_id, f"❌ *Invalid Format*\n\nPlease use the format: `/kr (sprint_number) (kr_name)`\n\n*Examples:*\n• `/kr 5` - Search for KRs in Sprint 5\n• `/kr 5 user engagement` - Search for 'user engagement' in Sprint 5\n• `/kr 3 performance` - Search for 'performance' in Sprint 3")
+                            return
+                    
+                    # If no sprint number provided, ask for it
+                    if not sprint_number:
+                        bot.send_dm(user_id, f"❌ *Sprint Number Required*\n\nPlease use the format: `/kr (sprint_number) (kr_name)`\n\n*Examples:*\n• `/kr 5` - Search for KRs in Sprint 5\n• `/kr 5 user engagement` - Search for 'user engagement' in Sprint 5")
+                        return
+                    
+                    # Always trigger mentor check, pass search_term and sprint_number if present
+                    bot.send_mentor_check(
+                        user_id=user_id,
+                        standup_ts=None,  # No thread for slash commands
+                        user_name=user_name,
+                        request_type="kr",
+                        channel=user_id,
+                        search_term=search_term,
+                        sprint_number=sprint_number
+                    )
             except Exception as e:
                 print(f"❌ Error in background KR processing: {e}")
         thread = threading.Thread(target=process_kr_command)
@@ -350,7 +379,7 @@ def _handle_test_health_command(bot, user_id, channel_id):
     return True
 
 def _handle_blocker_command(bot, user_id, channel_id):
-    """Handle /blocker command - show user's current blockers with sprint filter."""
+    """Handle /blocker command with sprint number requirement and field memory."""
     try:
         import threading
         
@@ -367,41 +396,53 @@ def _handle_blocker_command(bot, user_id, channel_id):
                     print(f"❌ Error getting user info: {e}")
                     user_name = f"User {user_id}"
                 
-                # Send a message with options to view blockers
-                blocks = [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f"*View Your Blockers*\\n\\nChoose how you'd like to view your blockers:"
-                        }
-                    },
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "All Blockers"
-                                },
-                                "action_id": "view_all_blockers",
-                                "value": user_id
-                            },
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "Filter by Sprint"
-                                },
-                                "action_id": "open_blocker_sprint_modal",
-                                "value": user_id
+                # Check if user has pending blocker data to continue
+                if hasattr(bot, 'blocker_pending_data') and user_id in bot.blocker_pending_data:
+                    pending_data = bot.blocker_pending_data[user_id]
+                    bot.send_blocker_continue_form(user_id, user_name, pending_data)
+                else:
+                    # Send a message asking for sprint number
+                    blocks = [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*View Your Blockers*\\n\\nPlease specify a sprint number to view your blockers:"
                             }
-                        ]
-                    }
-                ]
-                
-                bot.send_dm(user_id, "Select an option to view your blockers:", blocks=blocks)
+                        },
+                        {
+                            "type": "input",
+                            "block_id": "sprint_number",
+                            "label": {
+                                "type": "plain_text",
+                                "text": "Sprint Number"
+                            },
+                            "element": {
+                                "type": "plain_text_input",
+                                "action_id": "sprint_number_input",
+                                "placeholder": {
+                                    "type": "plain_text",
+                                    "text": "e.g., 5"
+                                }
+                            }
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "View Blockers"
+                                    },
+                                    "action_id": "view_blockers_with_sprint",
+                                    "value": user_id
+                                }
+                            ]
+                        }
+                    ]
+                    
+                    bot.send_dm(user_id, "Please provide a sprint number to view your blockers:", blocks=blocks)
                 
             except Exception as e:
                 print(f"❌ Error in background blocker processing: {e}")

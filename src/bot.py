@@ -59,6 +59,8 @@ class DailyStandupBot:
             'health_check': False
         }
         self.pending_kr_search = {}
+        self.pending_kr_sprint = {}
+        self.pending_blocker_sprint = {}
         self.BLOCKER_FOLLOWUP_DELAY_HOURS = 2/60  # 2 minutes for testing
         self.DAILY_STANDUP_TIME = "09:00"  # 9 AM
         self.DAILY_HEALTH_CHECK_TIME = "09:00"  # 9 AM
@@ -315,18 +317,27 @@ class DailyStandupBot:
             print(f"❌ Error updating modal: {e}")
             return None
 
-    def send_mentor_check(self, user_id, standup_ts, user_name, request_type, channel, search_term=None):
-        """Send a mentor check prompt to the user. If search_term is provided, store it for use after mentor check."""
+    def send_mentor_check(self, user_id, standup_ts, user_name, request_type, channel, search_term=None, sprint_number=None):
+        """Send a mentor check prompt to the user. If search_term or sprint_number is provided, store it for use after mentor check."""
         try:
             print(f"🔍 DEBUG: send_mentor_check called for user {user_name} ({user_id})")
-            print(f"🔍 DEBUG: Request type: {request_type}, Search term: {search_term}")
+            print(f"🔍 DEBUG: Request type: {request_type}, Search term: {search_term}, Sprint number: {sprint_number}")
             
-            # Store the search term in a temporary dict for the user (for follow-up after mentor check)
+            # Store the search term and sprint number in temporary dicts for the user (for follow-up after mentor check)
             if not hasattr(self, 'pending_kr_search'):
                 self.pending_kr_search = {}
+            if not hasattr(self, 'pending_kr_sprint'):
+                self.pending_kr_sprint = {}
+            if not hasattr(self, 'pending_blocker_sprint'):
+                self.pending_blocker_sprint = {}
+                
             if request_type == "kr":
                 self.pending_kr_search[user_id] = search_term if search_term else None
-                print(f"🔍 DEBUG: Stored search term '{search_term}' for user {user_id}")
+                self.pending_kr_sprint[user_id] = sprint_number if sprint_number else None
+                print(f"🔍 DEBUG: Stored search term '{search_term}' and sprint number '{sprint_number}' for user {user_id}")
+            elif request_type == "blocker":
+                self.pending_blocker_sprint[user_id] = sprint_number if sprint_number else None
+                print(f"🔍 DEBUG: Stored sprint number '{sprint_number}' for user {user_id}")
             
             # Create the mentor check message with buttons
             if request_type == "kr":
@@ -431,7 +442,7 @@ class DailyStandupBot:
             print(f"Error sending enhanced blocker follow-up: {e.response['error']}")
             return None
 
-    def escalate_blocker_with_details(self, user_id, user_name, blocker_description, kr_name, urgency, notes):
+    def escalate_blocker_with_details(self, user_id, user_name, blocker_description, kr_name, urgency, notes, sprint_number=None):
         """Escalate blocker with detailed information using dynamic org metadata."""
         try:
             import time
@@ -465,7 +476,8 @@ class DailyStandupBot:
                         reported_by=user_name,
                         reported_by_id=user_id,
                         urgency=urgency,
-                        notes=notes
+                        notes=notes,
+                        sprint_number=sprint_number
                     )
                     if success:
                         print(f"✅ Blocker saved to Coda and KR '{kr_name}' status updated to 'Blocked' for {user_name}")
@@ -478,7 +490,8 @@ class DailyStandupBot:
                             kr_name=kr_name,
                             urgency=urgency,
                             notes=notes,
-                            username=user_name
+                            username=user_name,
+                            sprint_number=sprint_number
                         )
                         if fallback_success:
                             print(f"✅ Blocker saved to Coda (fallback) for {user_name}")
@@ -494,7 +507,8 @@ class DailyStandupBot:
                             kr_name=kr_name,
                             urgency=urgency,
                             notes=notes,
-                            username=user_name
+                            username=user_name,
+                            sprint_number=sprint_number
                         )
                         if fallback_success:
                             print(f"✅ Blocker saved to Coda (fallback) for {user_name}")
@@ -525,6 +539,8 @@ class DailyStandupBot:
             escalation_text += f"*Blocker Details:*\n"
             escalation_text += f"• **Description:** {blocker_description}\n"
             escalation_text += f"• **KR:** {kr_name}\n"
+            if sprint_number:
+                escalation_text += f"• **Sprint:** {sprint_number}\n"
             escalation_text += f"• **Urgency:** {urgency_emoji} {urgency}\n"
             escalation_text += f"• **Notes:** {notes if notes else 'None'}\n\n"
             escalation_text += f"*Status:* ⏳ Unclaimed - Available for leads to claim"
@@ -2540,7 +2556,7 @@ class DailyStandupBot:
             return None
 
     def handle_mark_resolved_click(self, payload):
-        """Handle mark resolved button click - opens resolution modal for channel, direct resolve for DM."""
+        """Handle mark resolved button click - opens resolution modal for resolution notes."""
         try:
             user_id = payload['user']['id']
             user_name = self.get_user_name(user_id)
@@ -2555,11 +2571,29 @@ class DailyStandupBot:
                 kr_name = parts[1]
                 resolver_id = parts[2]
                 
-                # For now, directly resolve
-                self._resolve_blocker_directly(
-                    "temp_id", blocked_user_id, kr_name, "Blocker resolved", 
-                    resolver_id, user_name, "Resolved via button click", 
-                    channel_id, message_ts
+                # Open resolution modal to get resolution notes
+                trigger_id = payload['trigger_id']
+                blocks = [
+                    {
+                        "type": "input",
+                        "block_id": "resolution_notes",
+                        "label": {"type": "plain_text", "text": "Resolution Notes"},
+                        "element": {
+                            "type": "plain_text_input",
+                            "action_id": "resolution_notes_input",
+                            "multiline": True,
+                            "placeholder": {"type": "plain_text", "text": "How was this blocker resolved? What was the solution?"}
+                        }
+                    }
+                ]
+                
+                self.open_modal(
+                    trigger_id=trigger_id,
+                    title="Resolve Blocker",
+                    blocks=blocks,
+                    submit_text="Mark Resolved",
+                    callback_id="blocker_direct_resolution_submit",
+                    private_metadata=f"{blocked_user_id}_{kr_name}_{resolver_id}_{channel_id}_{message_ts}"
                 )
             
         except Exception as e:
@@ -2776,102 +2810,10 @@ class DailyStandupBot:
         except Exception as e:
             print(f"Error sending completion message: {e}")
 
-    def handle_blocker_completion(self, blocker_id, channel_id, message_ts, resolver_id=None, resolver_name=None):
-        """Handle blocker completion - append completion confirmation and update KR status."""
-        try:
-            print(f"🔍 DEBUG: Starting blocker completion for ID: {blocker_id}")
-            
-            # Get resolver info if not provided
-            if not resolver_id:
-                resolver_id = "unknown"
-            if not resolver_name:
-                resolver_name = "Unknown User"
-            
-            # Mark blocker as complete in Coda
-            if self.coda:
-                print(f"🔍 DEBUG: Attempting to mark blocker {blocker_id} as complete in Coda")
-                
-                # First, get blocker details to find the KR name
-                blocker_details = self.coda.get_blocker_by_id(blocker_id)
-                kr_name = None
-                if blocker_details:
-                    kr_name = blocker_details.get("kr_name")
-                    print(f"🔍 DEBUG: Found KR name for blocker: {kr_name}")
-                
-                # Mark blocker as complete
-                success = self.coda.mark_blocker_complete(row_id=blocker_id, resolution_notes="Resolved via completion")
-                if success:
-                    print(f"✅ Successfully marked blocker {blocker_id} as complete in Coda")
-                    
-                    # Update KR status to 'Unblocked' if we have the KR name
-                    if kr_name:
-                        try:
-                            kr_success = self.coda.resolve_blocker_from_kr(
-                                kr_name=kr_name,
-                                resolved_by=resolver_name,
-                                resolved_by_id=resolver_id
-                            )
-                            if kr_success:
-                                print(f"✅ Successfully updated KR '{kr_name}' status to 'Unblocked'")
-                            else:
-                                print(f"⚠️ Failed to update KR '{kr_name}' status, but blocker was marked complete")
-                        except Exception as kr_error:
-                            print(f"⚠️ Error updating KR status: {kr_error}")
-                            # Continue with blocker completion even if KR update fails
-                    else:
-                        print(f"⚠️ Could not find KR name for blocker {blocker_id}, skipping KR status update")
-                    
-                    # Try to update the message, but don't fail if it doesn't work
-                    try:
-                        completion_text = "\n\n✅ *BLOCKER RESOLVED* - This blocker has been marked as complete."
-                        if kr_name:
-                            completion_text += f" KR '{kr_name}' status updated to 'Unblocked'."
-                        update_result = self.update_message(channel_id, message_ts, completion_text, append=True)
-                        if update_result:
-                            print(f"✅ Successfully updated message with completion text")
-                        else:
-                            print(f"⚠️ Could not update message, but blocker was marked complete")
-                    except Exception as update_error:
-                        print(f"⚠️ Error updating message: {update_error}")
-                    
-                    # Send completion message to leads channel
-                    try:
-                        from datetime import datetime
-                        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        completion_message = f"🎉 *Blocker Resolved* - @{resolver_name} has successfully resolved a blocker!"
-                        if kr_name:
-                            completion_message += f"\n• *KR:* {kr_name}"
-                        completion_message += f"\n• *Resolved by:* @{resolver_name}"
-                        completion_message += f"\n• *Resolved at:* {current_time}"
-                        completion_message += f"\n• *Status:* KR status updated to 'Unblocked' in Coda"
-                        
-                        self.send_completion_message_to_accessible_channel(completion_message)
-                        print(f"✅ Sent completion message to leads channel")
-                    except Exception as channel_error:
-                        print(f"⚠️ Error sending completion message to channel: {channel_error}")
-                        
-                else:
-                    print(f"❌ Failed to mark blocker {blocker_id} as complete in Coda")
-                    # Still try to update the message as a fallback
-                    try:
-                        completion_text = "\n\n⚠️ *BLOCKER COMPLETION ATTEMPTED* - Coda update failed, but action was taken."
-                        self.update_message(channel_id, message_ts, completion_text, append=True)
-                    except Exception as update_error:
-                        print(f"⚠️ Error updating message: {update_error}")
-            else:
-                print(f"⚠️ Coda service not available, marking blocker complete locally")
-                # Fallback if Coda is not available
-                try:
-                    completion_text = "\n\n✅ *BLOCKER RESOLVED* - This blocker has been marked as complete (local only)."
-                    self.update_message(channel_id, message_ts, completion_text, append=True)
-                except Exception as update_error:
-                    print(f"⚠️ Error updating message: {update_error}")
-                
-        except Exception as e:
-            print(f"❌ Error handling blocker completion: {e}")
-            import traceback
-            traceback.print_exc()
+    # DEPRECATED: This method is no longer used. All blocker completions now go through modals.
+    # def handle_blocker_completion(self, blocker_id, channel_id, message_ts, resolver_id=None, resolver_name=None):
+    #     """Handle blocker completion - append completion confirmation and update KR status."""
+    #     pass
 
     def auto_assign_roles(self, user_id: str = None, force_refresh: bool = False):
         """
@@ -2954,37 +2896,42 @@ class DailyStandupBot:
         roles = []
         
         try:
-            # Get department and SME from org metadata service
+            # FIRST: Check Slack profile directly for roles (highest priority)
+            print(f"🔍 Analyzing Slack profile for user {user_id}")
+            profile_roles = self._analyze_profile_for_roles(user_info)
+            if profile_roles:
+                roles.extend(profile_roles)
+                print(f"🔍 Added profile-based roles: {profile_roles}")
+            
+            # SECOND: Get department and SME from org metadata service (lower priority)
             if self.org_metadata:
                 print(f"🔍 Getting org metadata for user {user_id}")
                 metadata = self.org_metadata.get_user_department_and_sme(user_id)
                 print(f"🔍 Org metadata result: {metadata}")
                 
-                # Add department as role (don't duplicate with SME)
-                if metadata.get('department'):
-                    roles.append(metadata['department'])
-                    print(f"🔍 Added department role: {metadata['department']}")
+                # Only add org metadata roles if they don't conflict with profile roles
+                if metadata.get('department') and metadata.get('department') not in roles:
+                    # Check if this is a generic department that shouldn't override specific roles
+                    if metadata.get('department') != 'engineering' or not any(role in ['scrum_master', 'pm', 'designer', 'qa'] for role in roles):
+                        roles.append(metadata['department'])
+                        print(f"🔍 Added department role: {metadata['department']}")
                 
-                # Only add SME if it's different from department
-                if metadata.get('sme') and metadata.get('sme') != metadata.get('department'):
-                    roles.append(metadata['sme'])
-                    print(f"🔍 Added SME role: {metadata['sme']}")
+                # Only add SME if it's different from department and doesn't conflict
+                if metadata.get('sme') and metadata.get('sme') != metadata.get('department') and metadata.get('sme') not in roles:
+                    if metadata.get('sme') != 'engineering' or not any(role in ['scrum_master', 'pm', 'designer', 'qa'] for role in roles):
+                        roles.append(metadata['sme'])
+                        print(f"🔍 Added SME role: {metadata['sme']}")
                 
-                # Add leadership roles based on title
-                title = metadata.get('user_info', {}).get('title', '').lower()
-                print(f"🔍 User title: {title}")
-                if any(keyword in title for keyword in ['lead', 'manager', 'director', 'vp', 'head']):
-                    roles.append('lead')
-                    print(f"🔍 Added leadership role: lead")
-                if any(keyword in title for keyword in ['ceo', 'cto', 'cfo', 'coo', 'executive']):
-                    roles.append('admin')
-                    print(f"🔍 Added admin role: admin")
-            
-            # Fallback: analyze profile data directly
-            if not roles:
-                print(f"🔍 No roles from org metadata, trying profile analysis")
-                roles = self._analyze_profile_for_roles(user_info)
-                print(f"🔍 Profile analysis result: {roles}")
+                # Add leadership roles based on metadata title (only if not already determined by profile)
+                if not any(role in ['lead', 'admin'] for role in roles):
+                    title = metadata.get('user_info', {}).get('title', '').lower()
+                    print(f"🔍 Metadata title: {title}")
+                    if any(keyword in title for keyword in ['lead', 'manager', 'director', 'vp', 'head']):
+                        roles.append('lead')
+                        print(f"🔍 Added leadership role: lead")
+                    if any(keyword in title for keyword in ['ceo', 'cto', 'cfo', 'coo', 'executive']):
+                        roles.append('admin')
+                        print(f"🔍 Added admin role: admin")
             
             # Add default roles if none found
             if not roles:
@@ -3014,30 +2961,41 @@ class DailyStandupBot:
         try:
             # Analyze job title
             title = user_info.get('profile', {}).get('title', '').lower()
+            print(f"🔍 Analyzing profile title: '{title}'")
             
             # Department-based roles - Updated for your org structure
             if any(keyword in title for keyword in ['sales engineer', 'sales swe', 'sales', 'account', 'business development', 'bd', 'revenue']):
                 roles.append('sales')
+                print(f"🔍 Matched sales role from title: '{title}'")
             elif any(keyword in title for keyword in ['engineer', 'developer', 'dev', 'software', 'backend', 'frontend', 'fullstack', 'swe', 'software engineer']):
                 roles.append('engineering')
-            elif any(keyword in title for keyword in ['scrum master', 'scrum', 'agile', 'sprint', 'task assignment', 'project management']):
+                print(f"🔍 Matched engineering role from title: '{title}'")
+            elif any(keyword in title for keyword in ['scrum master', 'scrum', 'agile', 'sprint', 'task assignment', 'project management', 'sm']):
                 roles.append('scrum_master')
+                print(f"🔍 Matched scrum_master role from title: '{title}'")
             elif any(keyword in title for keyword in ['operations', 'ops', 'devops', 'infrastructure', 'platform', 'system admin']):
                 roles.append('operations')
+                print(f"🔍 Matched operations role from title: '{title}'")
             elif any(keyword in title for keyword in ['marketing', 'growth', 'seo', 'content', 'social media', 'brand', 'digital marketing']):
                 roles.append('marketing')
+                print(f"🔍 Matched marketing role from title: '{title}'")
             elif any(keyword in title for keyword in ['hr', 'human resources', 'people', 'talent', 'recruiting', 'human capital', 'people ops']):
                 roles.append('human_capital')
+                print(f"🔍 Matched human_capital role from title: '{title}'")
             elif any(keyword in title for keyword in ['finance', 'accounting', 'fp&a', 'controller', 'cfo', 'financial', 'bookkeeping']):
                 roles.append('finance')
+                print(f"🔍 Matched finance role from title: '{title}'")
             elif any(keyword in title for keyword in ['client service', 'customer service', 'support', 'customer success', 'cs', 'help desk', 'technical support', 'client delivery']):
                 roles.append('client_service')
+                print(f"🔍 Matched client_service role from title: '{title}'")
             
             # Leadership roles
             if any(keyword in title for keyword in ['lead', 'manager', 'director', 'vp', 'head']):
                 roles.append('lead')
+                print(f"🔍 Matched lead role from title: '{title}'")
             if any(keyword in title for keyword in ['ceo', 'cto', 'cfo', 'coo', 'executive']):
                 roles.append('admin')
+                print(f"🔍 Matched admin role from title: '{title}'")
             
             # Analyze custom fields if available
             custom_fields = user_info.get('profile', {}).get('fields', {})
@@ -3063,6 +3021,7 @@ class DailyStandupBot:
                     elif any(keyword in field_value for keyword in ['client service', 'customer service', 'support']):
                         roles.append('client_service')
             
+            print(f"🔍 Profile analysis complete. Found roles: {roles}")
             return list(set(roles))  # Remove duplicates
             
         except Exception as e:
@@ -3090,3 +3049,145 @@ class DailyStandupBot:
                         assigned_count += 1
         
         print(f"✅ Assigned roles to {assigned_count} new users.")
+
+    def send_kr_continue_form(self, user_id, user_name, pending_data):
+        """Send a KR form with previously entered data to allow user to complete missing fields."""
+        try:
+            # Create modal blocks with pre-filled data
+            modal_blocks = [
+                {
+                    "type": "input",
+                    "block_id": "kr_name",
+                    "label": {"type": "plain_text", "text": "Key Result (KR) Name"},
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "kr_name_input",
+                        "placeholder": {"type": "plain_text", "text": "e.g., KR1: Increase user engagement"},
+                        "initial_value": pending_data.get('kr_name', '')
+                    }
+                },
+                {
+                    "type": "input",
+                    "block_id": "sprint_number",
+                    "label": {"type": "plain_text", "text": "Sprint Number"},
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "sprint_number_input",
+                        "placeholder": {"type": "plain_text", "text": "e.g., 5"},
+                        "initial_value": str(pending_data.get('sprint_number', ''))
+                    }
+                },
+                {
+                    "type": "input",
+                    "block_id": "kr_description",
+                    "label": {"type": "plain_text", "text": "KR Description"},
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "kr_description_input",
+                        "multiline": True,
+                        "placeholder": {"type": "plain_text", "text": "Describe what this KR accomplishes..."},
+                        "initial_value": pending_data.get('kr_description', '')
+                    }
+                },
+                {
+                    "type": "input",
+                    "block_id": "kr_owner",
+                    "label": {"type": "plain_text", "text": "KR Owner"},
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "kr_owner_input",
+                        "placeholder": {"type": "plain_text", "text": "Who owns this KR?"},
+                        "initial_value": pending_data.get('kr_owner', '')
+                    }
+                }
+            ]
+            
+            # Send a message with a button to open the modal
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Continue KR Entry*\\n\\nYou have pending KR data. Click below to complete your entry:"
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Complete KR Entry",
+                                "emoji": True
+                            },
+                            "value": "complete_kr_entry",
+                            "action_id": "open_kr_continue_modal",
+                            "style": "primary"
+                        }
+                    ]
+                }
+            ]
+            
+            self.send_dm(user_id, "", blocks=blocks)
+            
+        except Exception as e:
+            print(f"❌ Error sending KR continue form: {e}")
+            self.send_dm(user_id, "❌ Error opening KR form. Please try again.")
+
+    def send_blocker_continue_form(self, user_id, user_name, pending_data):
+        """Send a blocker form with previously entered data to allow user to complete missing fields."""
+        try:
+            # Send a message with a button to open the modal
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Continue Blocker Entry*\\n\\nYou have pending blocker data. Click below to complete your entry:"
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Complete Blocker Entry",
+                                "emoji": True
+                            },
+                            "value": "complete_blocker_entry",
+                            "action_id": "open_blocker_continue_modal",
+                            "style": "primary"
+                        }
+                    ]
+                }
+            ]
+            
+            self.send_dm(user_id, "", blocks=blocks)
+            
+        except Exception as e:
+            print(f"❌ Error sending blocker continue form: {e}")
+            self.send_dm(user_id, "❌ Error opening blocker form. Please try again.")
+
+    def store_kr_pending_data(self, user_id, **data):
+        """Store pending KR data for field memory functionality."""
+        if not hasattr(self, 'kr_pending_data'):
+            self.kr_pending_data = {}
+        self.kr_pending_data[user_id] = data
+
+    def store_blocker_pending_data(self, user_id, **data):
+        """Store pending blocker data for field memory functionality."""
+        if not hasattr(self, 'blocker_pending_data'):
+            self.blocker_pending_data = {}
+        self.blocker_pending_data[user_id] = data
+
+    def clear_pending_data(self, user_id, data_type='all'):
+        """Clear pending data for a user."""
+        if data_type == 'all' or data_type == 'kr':
+            if hasattr(self, 'kr_pending_data'):
+                self.kr_pending_data.pop(user_id, None)
+        if data_type == 'all' or data_type == 'blocker':
+            if hasattr(self, 'blocker_pending_data'):
+                self.blocker_pending_data.pop(user_id, None)
