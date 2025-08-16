@@ -148,3 +148,5 @@ The server responded with: {'ok': False, 'error': 'ratelimited'}
 The server responded with: {'ok': False, 'error': 'ratelimited'}
 2025-08-05 16:21:22,753 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
 The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 21:01:14,046 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}

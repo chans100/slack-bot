@@ -486,9 +486,8 @@ class CodaService:
             {"column": "Timestamp", "value": timestamp}
         ]
         
-        # Add late tag if check-in is late
-        if is_late:
-            cells.append({"column": "Status", "value": "Late"})
+        # Note: Removed Status column write since it doesn't exist in the table
+        # Late check-ins are still tracked in the response text
         
         data = {
             "rows": [{

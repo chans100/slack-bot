@@ -753,9 +753,16 @@ def handle_checkin_submission(bot, payload):
                 # Save to Coda
                 if bot.coda:
                     try:
+                        # Include late status in the response text since we can't write to a separate Status column
+                        response_text = f"Today: {status}\nOn Track: {track_display}\nBlockers: {blockers_display}"
+                        if notes:
+                            response_text += f"\nNotes: {notes}"
+                        if is_late:
+                            response_text += f"\n⚠️ LATE SUBMISSION"
+                        
                         success = bot.coda.add_standup_response(
                             user_id=user_id,
-                            response_text=f"Today: {status}\nOn Track: {track_display}\nBlockers: {blockers_display}\nNotes: {notes}" if notes else f"Today: {status}\nOn Track: {track_display}\nBlockers: {blockers_display}",
+                            response_text=response_text,
                             username=user_name,
                             is_late=is_late
                         )
@@ -768,13 +775,9 @@ def handle_checkin_submission(bot, payload):
                 else:
                     print(f"⚠️ Coda service not available - checkin response not saved")
                 
-                # Send simple confirmation message
-                response_text = "✅ *Check-in submitted successfully!*"
-                
+                # Send late notification only if needed
                 if is_late:
-                    response_text += f"\n⚠️ *Note: This check-in was submitted late and has been tagged accordingly.*"
-                
-                bot.send_dm(user_id, response_text)
+                    bot.send_dm(user_id, "⚠️ *Note: This check-in was submitted late and has been tagged accordingly.*")
                 
                 # If user has blockers or is behind, automatically prompt them to report blockers with buttons
                 if blockers_status == 'yes' or track_status == 'no':
@@ -1382,12 +1385,12 @@ def handle_health_response(bot, payload):
                             bot.send_dm(user_id, "✅ Your health check has been saved to Coda!")
                         else:
                             print(f"❌ Failed to store health check in Health_Check table for {user_name}")
-                            bot.send_dm(user_id, "✅ Your health check has been processed!")
+                            # Health check processed silently
                     except Exception as e:
                         print(f"❌ Error storing health check in Health_Check table: {e}")
-                        bot.send_dm(user_id, "✅ Your health check has been processed!")
+                        # Health check processed silently
                 else:
-                    bot.send_dm(user_id, "✅ Your health check has been processed!")
+                    pass  # Health check processed silently
                 
             except Exception as e:
                 print(f"Error in background health check processing: {e}")
@@ -2082,7 +2085,7 @@ def handle_health_public_share_submission(bot, payload):
         mood = bot.health_responses.get(user_id, 'Unknown')
         
         # Send immediate confirmation
-        bot.send_dm(user_id, "✅ Processing your public share in background...")
+                        # Processing public share in background
         
         # Process Coda saving in background thread
         def process_public_share_in_background():
@@ -2093,7 +2096,7 @@ def handle_health_public_share_submission(bot, payload):
                         # Save health check sharing to After_Health_Check table
                         success = bot.coda.save_health_check_sharing(user_id, user_name, mood, share_text, is_public=True)
                         if success:
-                            bot.send_dm(user_id, "✅ Your health check has been shared publicly and saved to Coda!")
+                            pass  # Health check shared publicly and saved to Coda
                         else:
                             bot.send_dm(user_id, "⚠️ Your health check was shared publicly, but there was an issue saving to Coda.")
                     except Exception as e:
