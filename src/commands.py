@@ -2,7 +2,7 @@ import json
 import threading
 import traceback
 import time
-from flask import jsonify, request
+# Removed Flask imports - using Socket Mode
 from .utils import logger, error_handler, input_validator, safe_executor
 
 def _process_command(bot, user_id, command, text="", channel_id=None):
@@ -38,10 +38,11 @@ def _process_command(bot, user_id, command, text="", channel_id=None):
 
 def _handle_help_command(bot, user_id, channel_id):
     """Handle /help command."""
-    user_name = bot.get_user_name(user_id)
-    
-    # Create properly formatted help blocks
-    help_blocks = [
+    try:
+        user_name = bot.get_user_name(user_id)
+        
+        # Create properly formatted help blocks
+        help_blocks = [
         {
             "type": "header",
             "text": {
@@ -106,9 +107,13 @@ def _handle_help_command(bot, user_id, channel_id):
         }
     ]
     
-    # Send as DM with blocks formatting
-    bot.send_dm(user_id, "Here are all available commands:", blocks=help_blocks)
-    return True
+        # Send as DM with blocks formatting
+        bot.send_dm(user_id, "Here are all available commands:", blocks=help_blocks)
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error in _handle_help_command: {e}")
+        return False
 
 def _handle_kr_command(bot, user_id, text, channel_id):
     """Handle /kr command with sprint number requirement and field memory."""
@@ -200,8 +205,6 @@ def _handle_checkin_command(bot, user_id, channel_id):
 def _handle_blocked_command(bot, user_id, channel_id):
     """Handle /blocked command - report a new blocker."""
     try:
-        print(f"🔍 DEBUG: _handle_blocked_command called for user: {user_id}")
-        
         import threading
         def process_blocked_command():
             try:
@@ -218,9 +221,6 @@ def _handle_blocked_command(bot, user_id, channel_id):
                 
                 # Send mentor check for blocker reporting
                 try:
-                    print(f"🔍 DEBUG: About to call send_mentor_check for blocker reporting")
-                    print(f"🔍 DEBUG: user_id: {user_id}, user_name: {user_name}, request_type: blocker")
-                    
                     result = bot.send_mentor_check(
                         user_id=user_id,
                         standup_ts=None,
@@ -229,8 +229,6 @@ def _handle_blocked_command(bot, user_id, channel_id):
                         channel=user_id
                     )
                     
-                    print(f"🔍 DEBUG: send_mentor_check result: {result}")
-                    
                     if result:
                         print(f"✅ Mentor check sent successfully for blocker reporting to {user_name}")
                     else:
@@ -238,8 +236,6 @@ def _handle_blocked_command(bot, user_id, channel_id):
                         
                 except Exception as e:
                     print(f"❌ Error sending mentor check for blocker reporting: {e}")
-                    import traceback
-                    traceback.print_exc()
                     # Send a simple fallback message
                     bot.send_dm(user_id, "🚨 Need to report a blocker? Please try again or contact your team lead directly.")
                         
@@ -293,13 +289,10 @@ def _handle_role_command(bot, user_id, text, channel_id):
                 
                 # Process role command directly to the user's DM
                 try:
-                    print(f"🔍 DEBUG: Processing role command to user DM: {user_id}")
                     bot._handle_role_command(user_id, text, user_id)  # Send to user's DM
                     print(f"✅ Role command processed successfully to DM")
                 except Exception as e:
                     print(f"❌ Error processing role command to DM: {e}")
-                    import traceback
-                    traceback.print_exc()
                     # Don't try to send error message to avoid cascading failures
                     
             except Exception as e:
@@ -327,13 +320,10 @@ def _handle_rolelist_command(bot, user_id, channel_id):
                 
                 # List roles directly to the user's DM
                 try:
-                    print(f"🔍 DEBUG: Listing roles to user DM: {user_id}")
                     bot._list_all_roles(user_id)  # Send to user's DM
                     print(f"✅ Role list processed successfully to DM")
                 except Exception as e:
                     print(f"❌ Error listing roles to DM: {e}")
-                    import traceback
-                    traceback.print_exc()
                     # Don't try to send error message to avoid cascading failures
                     
             except Exception as e:
@@ -401,13 +391,13 @@ def _handle_blocker_command(bot, user_id, channel_id):
                     pending_data = bot.blocker_pending_data[user_id]
                     bot.send_blocker_continue_form(user_id, user_name, pending_data)
                 else:
-                    # Send a message asking for sprint number
+                    # Send the original form asking for sprint number
                     blocks = [
                         {
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"*View Your Blockers*\\n\\nPlease specify a sprint number to view your blockers:"
+                                "text": "*View Your Blockers*\n\nPlease specify a sprint number to view your blockers:"
                             }
                         },
                         {
@@ -442,7 +432,7 @@ def _handle_blocker_command(bot, user_id, channel_id):
                         }
                     ]
                     
-                    bot.send_dm(user_id, "Please provide a sprint number to view your blockers:", blocks=blocks)
+                    bot.send_dm(user_id, "Please specify a sprint number to view your blockers:", blocks=blocks)
                 
             except Exception as e:
                 print(f"❌ Error in background blocker processing: {e}")
@@ -556,121 +546,4 @@ def _handle_autorole_command(bot, user_id, text, channel_id):
         print(f"❌ Error in autorole command handler: {e}")
         return False
 
-def register_command_routes(app, bot):
-    """Register command routes with comprehensive error handling."""
-    
-    # Track recent commands to prevent duplicates - make it accessible to the inner function
-    recent_commands = {}
-    
-    @app.route('/slack/command', methods=['POST'])
-    def handle_slash_commands():
-        """Handle slash commands with comprehensive error handling."""
-        nonlocal recent_commands  # Declare that we're using the outer scope variable
-        
-        try:
-            print(f"🔍 DEBUG: handle_slash_commands called")
-            
-            # Validate request
-            if not request.form:
-                print(f"🔍 DEBUG: No form data found")
-                return error_handler.handle_validation_error(
-                    ValueError("Request must contain form data"),
-                    "handle_slash_commands"
-                )
-            
-            # Extract command data
-            user_id = request.form.get('user_id')
-            command = request.form.get('command', '').lstrip('/')
-            text = request.form.get('text', '').strip()
-            channel_id = request.form.get('channel_id')
-            
-            print(f"🔍 DEBUG: Command data - user_id: {user_id}, command: {command}, text: {text}")
-            
-            # Validate required fields
-            if not user_id:
-                print(f"🔍 DEBUG: No user_id found")
-                return error_handler.handle_validation_error(
-                    ValueError("User ID is required"),
-                    "handle_slash_commands"
-                )
-            
-            if not command:
-                print(f"🔍 DEBUG: No command found")
-                return error_handler.handle_validation_error(
-                    ValueError("Command is required"),
-                    "handle_slash_commands",
-                    user_id=user_id
-                )
-            
-            # Validate user ID format
-            if not input_validator.validate_user_id(user_id):
-                print(f"🔍 DEBUG: Invalid user_id format: {user_id}")
-                return error_handler.handle_validation_error(
-                    ValueError(f"Invalid user ID format: {user_id}"),
-                    "handle_slash_commands",
-                    user_id=user_id
-                )
-            
-            # Validate channel ID if provided
-            if channel_id and not input_validator.validate_channel_id(channel_id):
-                print(f"🔍 DEBUG: Invalid channel_id format: {channel_id}")
-                return error_handler.handle_validation_error(
-                    ValueError(f"Invalid channel ID format: {channel_id}"),
-                    "handle_slash_commands",
-                    user_id=user_id,
-                    additional_data={'channel_id': channel_id}
-                )
-            
-            # Sanitize text input
-            sanitized_text = input_validator.sanitize_text(text)
-            
-            # Check for duplicate commands (within 5 seconds)
-            import time
-            current_time = time.time()
-            command_key = f"{user_id}_{command}_{sanitized_text}"
-            
-            if command_key in recent_commands:
-                last_time = recent_commands[command_key]
-                if current_time - last_time < 5:  # 5 second window
-                    print(f"🔍 DEBUG: Duplicate command detected and ignored: {command_key}")
-                    return jsonify({
-                        "response_type": "ephemeral",
-                        "text": "Command already being processed. Please wait a moment."
-                    })
-            
-            # Store this command
-            recent_commands[command_key] = current_time
-            
-            # Clean up old entries (older than 10 seconds)
-            cleanup_time = current_time - 10
-            recent_commands = {k: v for k, v in recent_commands.items() if v > cleanup_time}
-            
-            logger.info(f"Processing command '{command}' from user {user_id} with text: '{sanitized_text}'")
-            
-            print(f"🔍 DEBUG: About to call _process_command")
-            
-            # Process command
-            result = _process_command(bot, user_id, command, sanitized_text, channel_id)
-            
-            print(f"🔍 DEBUG: _process_command returned: {result}")
-            
-            if result:
-                return jsonify({
-                    "response_type": "ephemeral",
-                    "text": "Command processed successfully"
-                })
-            else:
-                return error_handler.handle_validation_error(
-                    ValueError(f"Unknown or failed command: {command}"),
-                    "handle_slash_commands",
-                    user_id=user_id,
-                    additional_data={'command': command, 'text': sanitized_text}
-                )
-                
-        except Exception as e:
-            print(f"🔍 DEBUG: Exception caught in handle_slash_commands: {str(e)}")
-            import traceback
-            print(f"🔍 DEBUG: Full traceback: {traceback.format_exc()}")
-            return error_handler.handle_unexpected_error(
-                e, "handle_slash_commands"
-            ) 
+# Removed Flask webhook routes - using Socket Mode instead 
