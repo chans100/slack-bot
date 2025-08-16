@@ -469,7 +469,7 @@ def handle_blocker_followup_response(bot, payload):
                     else:
                         print(f"⚠️ No trigger_id available for modal opening")
                         # Fallback to simple message
-                bot.send_dm(user_id, f"🎉 Great! The blocker for {kr_name} has been resolved!")
+                        bot.send_dm(user_id, f"🎉 Great! The blocker for {kr_name} has been resolved!")
                 except Exception as e:
                     print(f"❌ Error opening 24-hour resolution modal: {e}")
                     # Fallback to simple message
@@ -478,7 +478,7 @@ def handle_blocker_followup_response(bot, payload):
                 # Try to update the original blocker message if possible
                 try:
                     if 'channel' in payload and 'message' in payload:
-                bot.update_message(channel_id, payload['message']['ts'], 
+                        bot.update_message(channel_id, payload['message']['ts'], 
                                          f"✅ *Blocker for {kr_name} has been resolved by @{user_name}* - Resolution details requested.")
                     else:
                         print(f"🔍 DEBUG: No channel/message context available for updating")
@@ -488,16 +488,16 @@ def handle_blocker_followup_response(bot, payload):
             except Exception as e:
                 print(f"❌ Error in 24-hour resolution handling: {e}")
                 bot.send_dm(user_id, f"❌ Error processing resolution request. Please try again.")
-                
-            elif action_id == 'blocker_still_blocked':
-                bot.send_dm(user_id, f"I understand you're still blocked on {kr_name}. Let me escalate this further.")
-                # Escalate to next level
-                bot.escalate_by_hierarchy('blocker', f"User @{user_name} is still blocked on {kr_name}")
-                
-            elif action_id == 'blocker_need_help':
-                bot.send_dm(user_id, f"I'll help you get additional support for {kr_name}.")
-                # Send enhanced help form
-                bot.send_help_followup(user_id, payload['message']['ts'], user_name, channel_id)
+        
+        elif action_id == 'blocker_still_blocked':
+            bot.send_dm(user_id, f"I understand you're still blocked on {kr_name}. Let me escalate this further.")
+            # Escalate to next level
+            bot.escalate_by_hierarchy('blocker', f"User @{user_name} is still blocked on {kr_name}")
+            
+        elif action_id == 'blocker_need_help':
+            bot.send_dm(user_id, f"I'll help you get additional support for {kr_name}.")
+            # Send enhanced help form
+            bot.send_help_followup(user_id, payload['message']['ts'], user_name, channel_id)
         
         elif action_id == 'blocker_reescalate_24hr':
             # Re-escalate the blocker to the team
@@ -1382,10 +1382,10 @@ def handle_health_response(bot, payload):
                             bot.send_dm(user_id, "✅ Your health check has been saved to Coda!")
                         else:
                             print(f"❌ Failed to store health check in Health_Check table for {user_name}")
-                            bot.send_dm(user_id, "✅ Your health check has been processed!")
+                            bot.send_dm(user_id, "⚠️ Your health check was processed, but there was an issue saving to Coda.")
                     except Exception as e:
                         print(f"❌ Error storing health check in Health_Check table: {e}")
-                        bot.send_dm(user_id, "✅ Your health check has been processed!")
+                        bot.send_dm(user_id, "⚠️ Your health check was processed, but there was an issue saving to Coda.")
                 else:
                     bot.send_dm(user_id, "✅ Your health check has been processed!")
                 
@@ -2341,8 +2341,8 @@ def handle_blocker_resolution_submission(bot, payload):
                         print(f"⚠️ Failed to update KR status for {kr_name}")
                         bot.send_dm(user_id, "⚠️ Blocker saved but KR status update failed")
                         
-            else:
-                print(f"⚠️ Coda service not available - blocker resolution not saved")
+                else:
+                    print(f"⚠️ Coda service not available - blocker resolution not saved")
                     bot.send_dm(user_id, "⚠️ Coda service not available - resolution not saved")
                     
             except Exception as e:
@@ -2387,16 +2387,16 @@ def handle_blocker_direct_resolution_submission(bot, payload):
             # Process Coda operations in background to avoid Slack timeout
             def process_direct_resolution_in_background():
                 try:
-            # Update message to show resolution
-            updated_text = f"✅ *Blocker for {kr_name} has been resolved by @{user_name}*\n\n"
-            updated_text += f"*Resolved by:* @{user_name}\n"
-            updated_text += f"*Resolution notes:* {resolution_notes}\n"
-            updated_text += f"*Status:* Complete"
-            
-            bot.update_message(channel_id, message_ts, updated_text)
-            
-            # Notify the blocked user via DM
-            bot.send_dm(blocked_user_id, f"🎉 Your blocker for {kr_name} has been resolved by @{user_name}!")
+                    # Update message to show resolution
+                    updated_text = f"✅ *Blocker for {kr_name} has been resolved by @{user_name}*\n\n"
+                    updated_text += f"*Resolved by:* @{user_name}\n"
+                    updated_text += f"*Resolution notes:* {resolution_notes}\n"
+                    updated_text += f"*Status:* Complete"
+                    
+                    bot.update_message(channel_id, message_ts, updated_text)
+                    
+                    # Notify the blocked user via DM
+                    bot.send_dm(blocked_user_id, f"🎉 Your blocker for {kr_name} has been resolved by @{user_name}!")
             
             # Update in Coda if available
             if bot.coda:

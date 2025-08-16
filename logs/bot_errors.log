@@ -148,3 +148,46 @@ The server responded with: {'ok': False, 'error': 'ratelimited'}
 The server responded with: {'ok': False, 'error': 'ratelimited'}
 2025-08-05 16:21:22,753 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
 The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 09:59:34,551 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 09:59:44,057 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 10:01:51,322 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 10:02:09,307 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 10:16:08,925 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 10:16:20,986 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 10:16:35,297 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 10:16:51,576 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 10:17:07,279 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 12:12:55,565 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 12:12:57,888 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 12:13:01,237 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 12:48:41,325 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 12:48:49,741 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 12:51:10,430 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 13:26:20,676 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 13:26:33,171 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 13:29:11,953 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 13:29:12,297 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 13:31:05,380 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 13:35:03,813 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 13:35:22,793 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 14:17:35,071 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 14:22:43,656 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 14:28:24,552 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 14:28:24,731 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 14:40:22,423 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 14:40:46,294 - slack_bot - ERROR - Unexpected error in handle_interactive_components
+2025-08-15 14:55:33,180 - slack_bot - ERROR - Error finding users by department/SME: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 15:19:20,075 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 15:23:23,780 - slack_bot - ERROR - Auto-role assignment error: <urlopen error [Errno 11001] getaddrinfo failed>
+2025-08-15 16:18:29,667 - slack_bot - ERROR - Error getting users by role from org metadata: The request to the Slack API failed. (url: https://www.slack.com/api/users.list)
+The server responded with: {'ok': False, 'error': 'ratelimited'}
+2025-08-15 19:19:39,882 - slack_bot - ERROR - Auto-role assignment error: The read operation timed out
+2025-08-15 19:48:54,547 - slack_bot - ERROR - Auto-role assignment error: <urlopen error [Errno 11001] getaddrinfo failed>
