@@ -171,9 +171,15 @@ class CodaService:
             {"column": "Notes", "value": notes or ""}
         ]
         
-        # Add sprint number if provided
+        # Add sprint number if provided and if the column exists
         if sprint_number:
-            cells.append({"column": "Sprint", "value": str(sprint_number)})
+            # Check if Sprint column exists in the table
+            col_map = self.get_column_id_map(self.blocker_table_id)
+            if "Sprint" in col_map:
+                cells.append({"column": "Sprint", "value": str(sprint_number)})
+                print(f"🔍 DEBUG: Added Sprint column with value: {sprint_number}")
+            else:
+                print(f"⚠️ Sprint column not found in blocker table - skipping sprint number")
             
         data = {
             "rows": [{
@@ -500,16 +506,62 @@ class CodaService:
             print("❌ Failed to store standup response in Coda")
             return False
     
-    def search_kr_table(self, search_term):
-        """Search all 16 KR tables for a KR/assignment name."""
+    def search_kr_table(self, search_term, sprint_number=None):
+        """Search all 16 KR tables for a KR/assignment name with improved fuzzy matching and sprint filtering.
+        Prioritizes the 6 recommended KR tables first, then falls back to others if nothing found."""
+        
+        # Clean and validate search term
+        if not search_term or not isinstance(search_term, str):
+            print(f"❌ Invalid search term: {search_term}")
+            return []
+        
         # Strip asterisk prefix if present
         original_search_term = search_term
         if search_term.startswith('* '):
             search_term = search_term[2:]  # Remove "* " prefix
             print(f"🔍 DEBUG: search_kr_table - Stripped asterisk prefix, now searching for: '{search_term}'")
 
-        # Table IDs for all 16 KR tables
-        kr_table_ids = []
+        # Parse search term for sprint number and KR name
+        search_parts = search_term.split()
+        detected_sprint = None
+        kr_search_terms = []
+        
+        for part in search_parts:
+            if part.lower().startswith('sprint') and len(part) > 6:
+                try:
+                    detected_sprint = int(part[6:])  # Extract number after "sprint"
+                    print(f"🔍 DEBUG: Found sprint number in search term: {detected_sprint}")
+                except ValueError:
+                    kr_search_terms.append(part)
+            elif part.isdigit() and 1 <= int(part) <= 20:  # Assume it's a sprint number
+                detected_sprint = int(part)
+                print(f"🔍 DEBUG: Found sprint number in search term: {detected_sprint}")
+            else:
+                kr_search_terms.append(part)
+        
+        # Use provided sprint_number if available, otherwise use detected one
+        final_sprint = sprint_number if sprint_number is not None else detected_sprint
+        
+        # Reconstruct KR search term without sprint info
+        kr_search_term = ' '.join(kr_search_terms) if kr_search_terms else search_term
+        print(f"🔍 DEBUG: KR search term: '{kr_search_term}', Sprint: {final_sprint}")
+
+        # Table IDs for all 16 KR tables - prioritize the 6 recommended tables first
+        priority_table_ids = []
+        fallback_table_ids = []
+        
+        # First, add the 6 recommended priority tables (highest priority)
+        priority_tables = [
+            "KR_Table",      # Main KR table
+            "KR_Table14",    # Contains unique KRs
+            "KR_Table12",    # Contains unique KRs  
+            "KR_Table13",    # Contains unique KRs
+            "KR_Table10",    # Contains unique KRs
+            "KR_Table11"     # Contains unique KRs
+        ]
+        
+        # Add all other tables as fallback
+        all_tables = []
         for i in range(1, 17):  # 1 to 16
             if i == 1:
                 env_var = "KR_Table"  # First table is just "KR_Table"
@@ -518,10 +570,18 @@ class CodaService:
             
             table_id = os.environ.get(env_var)
             if table_id:
-                kr_table_ids.append(table_id)
-                print(f"🔍 DEBUG: Added KR table {env_var}: {table_id}")
+                if env_var in priority_tables:
+                    priority_table_ids.append((env_var, table_id))
+                    print(f"🔍 DEBUG: Added priority table {env_var}: {table_id}")
+                else:
+                    fallback_table_ids.append((env_var, table_id))
+                    print(f"🔍 DEBUG: Added fallback table {env_var}: {table_id}")
             else:
                 print(f"🔍 DEBUG: KR table {env_var} not found in environment variables")
+        
+        # Search priority tables first, then fallback tables
+        prioritized_table_ids = priority_table_ids + fallback_table_ids
+        print(f"🔍 DEBUG: Search order - Priority tables first: {[name for name, _ in priority_table_ids]}")
         
         doc_id = self.doc_id
         all_matches = []
@@ -545,8 +605,9 @@ class CodaService:
                 print(f"❌ Could not get columns for table {table_id}")
                 return []
             
-            # Find the KR name column (usually the first column or one with a descriptive name)
+            # Find the KR name column and sprint column
             kr_name_column = None
+            sprint_column = None
             columns = columns_result.get("items", [])
             
             # Look for common KR name column patterns
@@ -555,7 +616,9 @@ class CodaService:
                 if any(keyword in col_name for keyword in ["key result", "kr", "name", "title", "description"]):
                     kr_name_column = col.get("id")
                     print(f"🔍 DEBUG: Found KR name column '{col.get('name')}' with ID '{kr_name_column}' in table {table_id}")
-                    break
+                elif any(keyword in col_name for keyword in ["sprint", "iteration", "cycle"]):
+                    sprint_column = col.get("id")
+                    print(f"🔍 DEBUG: Found sprint column '{col.get('name')}' with ID '{sprint_column}' in table {table_id}")
             
             # If no specific column found, use the display column (usually the main name column)
             if not kr_name_column:
@@ -583,7 +646,27 @@ class CodaService:
             for row in result.get("items", []):
                 cells = row.get("values", {})
                 kr_name = cells.get(kr_name_column, "")
-                if search_term.lower().strip() == kr_name.lower().strip():
+                
+                # Check sprint filtering first if sprint number is specified
+                if final_sprint and sprint_column:
+                    row_sprint = cells.get(sprint_column, "")
+                    try:
+                        # More robust sprint matching - check for exact match or contains
+                        if row_sprint:
+                            row_sprint_str = str(row_sprint).strip()
+                            sprint_number_str = str(final_sprint).strip()
+                            
+                            # Skip if sprint doesn't match (exact match or contains)
+                            if sprint_number_str not in row_sprint_str and row_sprint_str not in sprint_number_str:
+                                continue
+                            else:
+                                print(f"🔍 DEBUG: Sprint match found: '{row_sprint_str}' matches '{sprint_number_str}'")
+                    except Exception as sprint_error:
+                        print(f"⚠️ Sprint comparison error: {sprint_error}")
+                        pass  # Continue if sprint comparison fails
+                
+                # Use improved fuzzy matching with higher threshold for better accuracy
+                if kr_name and self._calculate_similarity(kr_search_term.lower().strip(), kr_name.lower().strip()) >= 0.8:
                     # Return the full row with ID and cells
                     match_data = {
                         "id": row.get("id"),  # Include the row ID
@@ -595,12 +678,61 @@ class CodaService:
             
             return matches
 
-        # Search all 16 KR tables
-        for table_id in kr_table_ids:
-            all_matches.extend(search_table(table_id))
+        # Search tables in priority order (6 recommended tables first)
+        for table_name, table_id in prioritized_table_ids:
+            print(f"🔍 DEBUG: Searching table {table_name} ({table_id})")
+            table_matches = search_table(table_id)
+            all_matches.extend(table_matches)
+            
+            # If we found matches in priority tables, we can stop early
+            if table_name in [name for name, _ in priority_table_ids] and table_matches:
+                print(f"🔍 DEBUG: Found {len(table_matches)} matches in priority table {table_name}, continuing search for more results")
+            
+            # Limit results to prevent overwhelming output
+            if len(all_matches) >= 10:
+                print(f"🔍 DEBUG: Reached result limit of 10, stopping search")
+                break
 
-        print(f"🔍 DEBUG: search_kr_table found {len(all_matches)} total matches for '{search_term}'")
+        print(f"🔍 DEBUG: search_kr_table found {len(all_matches)} total matches for '{kr_search_term}' in sprint {final_sprint}")
+        
+        # Sort results by relevance (priority table matches first, then by similarity)
+        if all_matches:
+            def sort_key(match):
+                # Priority tables get highest priority
+                match_table_id = match.get("table_id")
+                if match_table_id:
+                    for priority_name, priority_table_id in priority_table_ids:
+                        if match_table_id == priority_table_id:
+                            return 3.0  # Highest priority for recommended tables
+                
+                # Find the KR name column for this match
+                if match_table_id:
+                    # Get column mapping for this table
+                    columns_endpoint = f"/docs/{doc_id}/tables/{match_table_id}/columns"
+                    columns_result = self._make_request("GET", columns_endpoint)
+                    if columns_result:
+                        columns = columns_result.get("items", [])
+                        for col in columns:
+                            col_name = col.get("name", "").lower()
+                            if any(keyword in col_name for keyword in ["key result", "kr", "name", "title", "description"]):
+                                kr_name_column = col.get("id")
+                                break
+                
+                if kr_name_column and kr_name_column in match:
+                    kr_name = match[kr_name_column]
+                    similarity = self._calculate_similarity(kr_search_term.lower().strip(), str(kr_name).lower().strip())
+                    # Exact matches get high priority
+                    if str(kr_name).lower().strip() == kr_search_term.lower().strip():
+                        return 2.0
+                    return similarity
+                return 0.0
+            
+            all_matches.sort(key=sort_key, reverse=True)
+            print(f"🔍 DEBUG: Results sorted by relevance (priority tables first)")
+        
         return all_matches
+
+
 
     def add_health_check_explanation(self, user_id, username, health_check_response, explanation):
         """Add health check explanation to After_Health_Check table."""
@@ -1030,21 +1162,50 @@ class CodaService:
         
         from datetime import datetime
         
+        # Get column ID mapping to find the correct column names
+        col_map = self.get_column_id_map(self.blocker_table_id)
+        if not col_map:
+            print("❌ Could not get column mapping for blocker table")
+            return False
+        
+        print(f"🔍 DEBUG: Available columns in blocker table: {list(col_map.keys())}")
+        
         # Prepare cells to update
         cells = []
         
         # Add resolution notes if provided
         if resolution_notes:
-            cells.append({"column": "Resolution", "value": resolution_notes})
+            # Look for resolution column - try different possible names
+            resolution_col = None
+            for col_name in ["Resolution", "Resolution Notes", "Status", "Notes"]:
+                if col_name in col_map:
+                    resolution_col = col_map[col_name]
+                    print(f"🔍 DEBUG: Using column '{col_name}' for resolution notes")
+                    break
+            
+            if resolution_col:
+                cells.append({"column": resolution_col, "value": resolution_notes})
+            else:
+                print(f"⚠️ No resolution column found. Available columns: {list(col_map.keys())}")
         
-        # Add resolution timestamp
-        resolution_timestamp = datetime.now().isoformat()
-        cells.append({"column": "Resolution Timestamp", "value": resolution_timestamp})
+        # Add resolution timestamp if the column exists
+        timestamp_col = None
+        for col_name in ["Resolution Timestamp", "Resolved Date", "Completion Date", "Timestamp"]:
+            if col_name in col_map:
+                timestamp_col = col_map[col_name]
+                print(f"🔍 DEBUG: Using column '{col_name}' for resolution timestamp")
+                break
+        
+        if timestamp_col:
+            resolution_timestamp = datetime.now().isoformat()
+            cells.append({"column": timestamp_col, "value": resolution_timestamp})
         
         # If no resolution notes, there's nothing to update
         if not cells:
-            print("⚠️ No resolution notes provided - nothing to update")
+            print("⚠️ No resolution notes provided and no timestamp column found - nothing to update")
             return True
+        
+        print(f"🔍 DEBUG: Updating blocker row {row_id} with cells: {cells}")
         
         endpoint = f"/docs/{self.doc_id}/tables/{self.blocker_table_id}/rows/{row_id}"
         data = {
@@ -1053,6 +1214,12 @@ class CodaService:
             }
         }
         result = self._make_request("PUT", endpoint, data)
+        
+        if result:
+            print(f"✅ Successfully updated blocker row {row_id} with resolution data")
+        else:
+            print(f"❌ Failed to update blocker row {row_id}")
+        
         return result is not None
 
     def save_health_check(self, user_id, username, mood, share_text, is_public=True):
@@ -1470,6 +1637,14 @@ class CodaService:
                 print("❌ Blocker table ID not configured")
                 return []
             
+            # Get column mapping to find the correct columns
+            col_map = self.get_column_id_map(self.blocker_table_id)
+            if not col_map:
+                print("❌ Could not get column mapping for blocker table")
+                return []
+            
+            print(f"🔍 DEBUG: Available columns in blocker table: {list(col_map.keys())}")
+            
             # Get all rows from the blocker table
             endpoint = f"/docs/{self.doc_id}/tables/{self.blocker_table_id}/rows"
             response = self._make_request("GET", endpoint)
@@ -1482,29 +1657,113 @@ class CodaService:
             for row in response.get('items', []):
                 values = row.get('values', {})
                 
-                # Check if this blocker is unresolved (no resolution date/status)
-                # Assuming there's a "Status" or "Resolved" column
-                status = values.get('Status', '').lower() if 'Status' in values else ''
-                resolved_date = values.get('Resolved Date', '') if 'Resolved Date' in values else ''
+                # Check if this blocker is unresolved by looking ONLY at the Resolution column
+                resolution_notes = ""
+                if "Resolution" in col_map:
+                    col_id = col_map["Resolution"]
+                    resolution_notes = values.get(col_id, "")
+                    if resolution_notes:
+                        print(f"🔍 DEBUG: Found resolution notes in column 'Resolution': {resolution_notes}")
                 
-                # Consider unresolved if status is not "resolved" and no resolved date
-                if 'resolved' not in status and not resolved_date:
+                # Check resolution timestamp if available
+                resolution_timestamp = ""
+                for col_name in ["Resolution Timestamp", "Resolved Date", "Completion Date", "Timestamp"]:
+                    if col_name in col_map:
+                        col_id = col_map[col_name]
+                        resolution_timestamp = values.get(col_id, "")
+                        if resolution_timestamp:
+                            print(f"🔍 DEBUG: Found resolution timestamp in column '{col_name}': {resolution_timestamp}")
+                            break
+                
+                # Consider unresolved if no resolution notes and no resolution timestamp
+                is_resolved = bool(resolution_notes and resolution_notes.strip()) or bool(resolution_timestamp and resolution_timestamp.strip())
+                
+                if not is_resolved:
+                    # Get user ID from the correct column
+                    user_id = ""
+                    for col_name in ["User ID", "Name"]:
+                        if col_name in col_map:
+                            col_id = col_map[col_name]
+                            user_id = values.get(col_id, "")
+                            if user_id:
+                                break
+                    
+                    # Get other fields using column mapping
                     blocker_data = {
-                        'user_id': values.get('c-lGMsICF2m5', ''),  # Slack User ID column
-                        'name': values.get('c-p08eiwzXzi', ''),  # Name column
-                        'blocker_description': values.get('c-5kx3DHy-cr', ''),  # Blocker Description column
-                        'kr_name': values.get('c-QPxAzx5UW1', ''),  # KR Name column
-                        'urgency': values.get('c-oMV3tnVN6q', 'medium'),  # Urgency column
-                        'notes': values.get('c-KHoCKe5qjS', ''),  # Notes column
+                        'user_id': user_id,
+                        'name': values.get(col_map.get("Name", ""), ""),
+                        'blocker_description': values.get(col_map.get("Blocker Description", ""), ""),
+                        'kr_name': values.get(col_map.get("KR Name", ""), ""),
+                        'urgency': values.get(col_map.get("Urgency", ""), "medium"),
+                        'notes': values.get(col_map.get("Notes", ""), ""),
                         'created_at': row.get('createdAt', ''),
                         'row_id': row.get('id', '')
                     }
-                    unresolved_blockers.append(blocker_data)
+                    
+                    # Only add if we have the essential data
+                    if blocker_data['user_id'] and blocker_data['kr_name']:
+                        unresolved_blockers.append(blocker_data)
+                        print(f"🔍 DEBUG: Found unresolved blocker: {blocker_data['name']} - {blocker_data['kr_name']}")
+                    else:
+                        print(f"⚠️ Skipping blocker with missing data: user_id={blocker_data['user_id']}, kr_name={blocker_data['kr_name']}")
             
             print(f"✅ Found {len(unresolved_blockers)} unresolved blockers in Coda")
             return unresolved_blockers
             
         except Exception as e:
             print(f"❌ Error getting unresolved blockers: {e}")
+            return [] 
+
+    def search_blocker_table(self, kr_name):
+        """Search for blockers in the blocker table by KR name."""
+        try:
+            if not self.blocker_table_id:
+                print("❌ Blocker table ID not configured")
+                return []
+            
+            # Get column mapping for the blocker table
+            col_map = self.get_column_id_map(self.blocker_table_id)
+            if not col_map:
+                print("❌ Could not get column mapping for blocker table")
+                return []
+            
+            print(f"🔍 DEBUG: Available columns in blocker table: {list(col_map.keys())}")
+            
+            # Get all rows from the blocker table
+            endpoint = f"/docs/{self.doc_id}/tables/{self.blocker_table_id}/rows"
+            response = self._make_request("GET", endpoint)
+            
+            if not response:
+                print("❌ Failed to get blockers from Coda")
+                return []
+            
+            matching_blockers = []
+            for row in response.get('items', []):
+                values = row.get('values', {})
+                
+                # Get the KR name from the row using column mapping
+                row_kr_name = values.get(col_map.get("KR Name", ""), "")
+                
+                # Check if KR name matches (case-insensitive)
+                if kr_name.lower() in row_kr_name.lower() or row_kr_name.lower() in kr_name.lower():
+                    blocker_data = {
+                        'id': row.get('id', ''),
+                        'user_id': values.get(col_map.get("User ID", "") or col_map.get("Name", ""), ""),
+                        'name': values.get(col_map.get("Name", ""), ""),
+                        'blocker_description': values.get(col_map.get("Blocker Description", ""), ""),
+                        'kr_name': row_kr_name,
+                        'urgency': values.get(col_map.get("Urgency", ""), "medium"),
+                        'notes': values.get(col_map.get("Notes", ""), ""),
+                        'created_at': row.get('createdAt', ''),
+                        'status': values.get(col_map.get("Status", ""), "")
+                    }
+                    matching_blockers.append(blocker_data)
+                    print(f"🔍 DEBUG: Found matching blocker: {blocker_data['name']} - {blocker_data['kr_name']}")
+            
+            print(f"✅ Found {len(matching_blockers)} matching blockers for KR '{kr_name}' in Coda")
+            return matching_blockers
+            
+        except Exception as e:
+            print(f"❌ Error searching blocker table: {e}")
             return [] 
 

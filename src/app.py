@@ -1,29 +1,26 @@
 import os
-from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from .bot import DailyStandupBot
 
 load_dotenv('.env')
 
-app = Flask(__name__)
-bot = DailyStandupBot()
+# Initialize bot with Socket Mode
+app_token = os.environ.get("SLACK_APP_TOKEN")
+if not app_token:
+    print("❌ ERROR: SLACK_APP_TOKEN not found! Socket Mode cannot work.")
+    exit(1)
 
-# Import and register routes from commands and events modules
-from .commands import register_command_routes
-from .events import register_event_routes
-
-register_command_routes(app, bot)
-register_event_routes(app, bot)
+bot = DailyStandupBot(
+    socket_mode=True,
+    app_token=app_token
+)
 
 def main():
-    """Main function to run the Flask app."""
-    print("🤖 Starting Daily Standup Bot Flask App...")
+    """Main function to run the bot in Socket Mode."""
+    print("🤖 Starting Daily Standup Bot in Socket Mode...")
     
-    # Start the bot's scheduled tasks
-    bot.start()
-    
-    # Run the Flask app
-    app.run(host=bot.config.FLASK_HOST, port=bot.config.FLASK_PORT, debug=bot.config.FLASK_DEBUG)
+    # Run the bot (Socket Mode will handle events)
+    bot.run()
 
 if __name__ == "__main__":
     main() 

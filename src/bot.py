@@ -7,6 +7,9 @@ import json
 from datetime import datetime, timezone, timedelta
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from slack_sdk.socket_mode import SocketModeClient
+from slack_sdk.socket_mode.request import SocketModeRequest
+from slack_sdk.socket_mode.response import SocketModeResponse
 from .coda_service import CodaService
 from .config import BotConfig
 from .org_metadata_service import OrgMetadataService
@@ -18,9 +21,39 @@ class DailyStandupBot:
     """
     A comprehensive Slack bot for daily standup management with hybrid interaction workflows.
     """
-    def __init__(self):
+    def __init__(self, socket_mode=False, app_token=None):
         self.config = BotConfig()
-        self.client = WebClient(token=self.config.SLACK_BOT_TOKEN)
+        self.socket_mode = socket_mode
+        self.app_token = app_token
+        
+        if socket_mode and app_token:
+            # Socket Mode setup
+            try:
+                from slack_sdk.socket_mode import SocketModeClient
+                from slack_sdk.socket_mode.request import SocketModeRequest
+                from slack_sdk.socket_mode.response import SocketModeResponse
+                
+                self.client = WebClient(token=self.config.SLACK_BOT_TOKEN)
+                
+                self.socket_client = SocketModeClient(
+                    app_token=app_token,
+                    web_client=self.client
+                )
+                
+                # Set up Socket Mode event handlers
+                self.socket_client.socket_mode_request_listeners.append(self.handle_socket_mode_request)
+                print("✅ Socket Mode enabled")
+                
+            except Exception as e:
+                print(f"❌ Error setting up Socket Mode: {e}")
+                self.socket_client = None
+                print("⚠️ Falling back to Webhook Mode due to Socket Mode setup failure")
+        else:
+            # Traditional webhook mode
+            self.client = WebClient(token=self.config.SLACK_BOT_TOKEN)
+            self.socket_client = None
+            print("✅ Webhook Mode enabled")
+        
         # Fallback channel ID - used when role-based channels are not available
         self.channel_id = self.config.SLACK_CHANNEL_ID
         self.coda = None
@@ -61,6 +94,8 @@ class DailyStandupBot:
         self.pending_kr_search = {}
         self.pending_kr_sprint = {}
         self.pending_blocker_sprint = {}
+        self.kr_pending_data = {}
+        self.blocker_pending_data = {}
         self.BLOCKER_FOLLOWUP_DELAY_HOURS = 2/60  # 2 minutes for testing
         self.DAILY_STANDUP_TIME = "09:00"  # 9 AM
         self.DAILY_HEALTH_CHECK_TIME = "09:00"  # 9 AM
@@ -100,8 +135,12 @@ class DailyStandupBot:
     def get_user_info(self, user_id):
         """Get user info from Slack with network error handling."""
         try:
+            print(f"🔍 DEBUG: get_user_info called with user_id: {user_id}")
             response = self.client.users_info(user=user_id)
-            return response['user']
+            print(f"🔍 DEBUG: users_info API response: {response}")
+            user_data = response['user']
+            print(f"🔍 DEBUG: Extracted user data: {user_data}")
+            return user_data
         except SlackApiError as e:
             print(f"❌ Slack API error getting user info: {e}")
             return None
@@ -110,7 +149,7 @@ class DailyStandupBot:
             if "getaddrinfo failed" in str(e) or "URLError" in str(e) or "ConnectionError" in str(e):
                 print(f"❌ Network connectivity issue getting user info: {e}")
                 # Return a fallback user info structure
-                return {
+                fallback = {
                     'id': user_id,
                     'name': 'Unknown',
                     'profile': {
@@ -118,8 +157,12 @@ class DailyStandupBot:
                         'real_name': 'Unknown'
                     }
                 }
+                print(f"🔍 DEBUG: Returning fallback user info: {fallback}")
+                return fallback
             else:
                 print(f"❌ Unexpected error getting user info: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
 
     def get_user_name(self, user_id):
@@ -127,7 +170,8 @@ class DailyStandupBot:
         try:
             user_info = self.get_user_info(user_id)
             if user_info:
-                return user_info.get('profile', {}).get('display_name') or user_info.get('profile', {}).get('real_name') or user_info.get('name', 'Unknown')
+                name = user_info.get('profile', {}).get('display_name') or user_info.get('profile', {}).get('real_name') or user_info.get('name', 'Unknown')
+                return name
             return 'Unknown'
         except Exception as e:
             print(f"❌ Error in get_user_name: {e}")
@@ -483,37 +527,12 @@ class DailyStandupBot:
                         print(f"✅ Blocker saved to Coda and KR '{kr_name}' status updated to 'Blocked' for {user_name}")
                     else:
                         print(f"❌ Failed to save blocker to Coda or update KR status for {user_name}")
-                        # Fallback to old method if new method fails
-                        fallback_success = self.coda.add_blocker(
-                            user_id=user_id,
-                            blocker_description=blocker_description,
-                            kr_name=kr_name,
-                            urgency=urgency,
-                            notes=notes,
-                            username=user_name,
-                            sprint_number=sprint_number
-                        )
-                        if fallback_success:
-                            print(f"✅ Blocker saved to Coda (fallback) for {user_name}")
-                        else:
-                            print(f"❌ Failed to save blocker to Coda (fallback) for {user_name}")
+                        # Don't use fallback method to avoid double saving
+                        print(f"⚠️ Blocker not saved - KR status update failed")
                 except Exception as e:
                     print(f"❌ Error saving blocker to Coda: {e}")
-                    # Try fallback method
-                    try:
-                        fallback_success = self.coda.add_blocker(
-                            user_id=user_id,
-                            blocker_description=blocker_description,
-                            kr_name=kr_name,
-                            urgency=urgency,
-                            notes=notes,
-                            username=user_name,
-                            sprint_number=sprint_number
-                        )
-                        if fallback_success:
-                            print(f"✅ Blocker saved to Coda (fallback) for {user_name}")
-                    except Exception as fallback_error:
-                        print(f"❌ Fallback method also failed: {fallback_error}")
+                    # Don't use fallback method to avoid double saving
+                    print(f"⚠️ Blocker not saved due to Coda error")
             else:
                 print(f"⚠️ Coda service not available - blocker not saved to database")
             
@@ -573,7 +592,7 @@ class DailyStandupBot:
                                 "text": "📋 View Details",
                                 "emoji": True
                             },
-                            "value": f"view_details_{blocker_id}_{kr_name}",
+                            "value": f"view_details_{user_id}_{kr_name}",
                             "action_id": "view_details"
                         }
                     ]
@@ -624,12 +643,37 @@ class DailyStandupBot:
             }
             if not hasattr(self, 'active_blockers'):
                 self.active_blockers = {}
+            
+            # Store using both the blocker_id (for general tracking) and message_key (for message replacement)
             self.active_blockers[blocker_id] = blocker_info
+            
+            # Track this blocker for 24-hour follow-up
+            self.track_blocker_for_followup(
+                user_id=user_id,
+                user_name=user_name,
+                blocker_description=blocker_description,
+                kr_name=kr_name,
+                urgency=urgency,
+                notes=notes,
+                escalation_ts=response['ts'],
+                channel_id=response.get('channel'),
+                message_ts=response['ts'],
+                blocker_id=blocker_id
+            )
+            
+            # Also store using message_key for consistent message replacement
+            message_key = f"{kr_name}_{response.get('channel')}"
+            self.active_blockers[message_key] = {
+                'kr_name': kr_name,
+                'channel_id': response.get('channel'),
+                'details_reply_ts': None,
+                'created_at': datetime.now()
+            }
             
             # Track for follow-up
             self.track_blocker_for_followup(
                 user_id, user_name, blocker_description, kr_name, 
-                urgency, notes, response['ts'], response.get('channel'), response['ts']
+                urgency, notes, response['ts'], response.get('channel'), response['ts'], blocker_id
             )
             
             return response['ts']
@@ -637,11 +681,14 @@ class DailyStandupBot:
             print(f"Error escalating blocker: {e}")
             return None
 
-    def track_blocker_for_followup(self, user_id, user_name, blocker_description, kr_name, urgency, notes, escalation_ts, channel_id=None, message_ts=None):
+    def track_blocker_for_followup(self, user_id, user_name, blocker_description, kr_name, urgency, notes, escalation_ts, channel_id=None, message_ts=None, blocker_id=None):
         """Track a blocker for automatic 24-hour follow-up."""
         try:
-            blocker_id = f"{user_id}_{kr_name}_{escalation_ts}"
+            # Use the provided blocker_id or generate one if not provided
+            if not blocker_id:
+                blocker_id = f"blocker_{user_id}_{int(escalation_ts)}"
             self.tracked_blockers[blocker_id] = {
+                'blocker_id': blocker_id,  # Store the blocker_id for consistency
                 'user_id': user_id,
                 'user_name': user_name,
                 'blocker_description': blocker_description,
@@ -663,6 +710,9 @@ class DailyStandupBot:
         try:
             current_time = datetime.now()
             print(f"🔍 Checking blocker followups at {current_time.strftime('%H:%M:%S')} - {len(self.tracked_blockers)} tracked blockers")
+            print(f"🔍 DEBUG: BLOCKER_FOLLOWUP_DELAY_HOURS = {self.BLOCKER_FOLLOWUP_DELAY_HOURS}")
+            print(f"🔍 DEBUG: Current time: {current_time}")
+            print(f"🔍 DEBUG: Tracked blockers: {list(self.tracked_blockers.keys())}")
             
             # Load unresolved blockers from Coda to ensure we don't miss any
             if self.coda:
@@ -671,8 +721,10 @@ class DailyStandupBot:
                     unresolved_blockers = self.coda.get_unresolved_blockers()
                     
                     for blocker in unresolved_blockers:
-                        # Create a unique blocker ID for tracking
-                        blocker_id = f"{blocker.get('user_id', 'unknown')}_{blocker.get('kr_name', 'unknown')}_{blocker.get('created_at', 'unknown')}"
+                        # Create a unique blocker ID for tracking (use a hash to avoid malformed IDs)
+                        import hashlib
+                        blocker_data = f"{blocker.get('user_id', 'unknown')}_{blocker.get('kr_name', 'unknown')}_{blocker.get('created_at', 'unknown')}"
+                        blocker_id = hashlib.md5(blocker_data.encode()).hexdigest()[:16]
                         
                         # Only track if not already tracked
                         if blocker_id not in self.tracked_blockers:
@@ -724,6 +776,8 @@ class DailyStandupBot:
                             print(f"📝 Loaded unresolved blocker: {blocker.get('name', 'Unknown')} - {blocker.get('kr_name', 'Unknown KR')}")
                     
                     print(f"✅ Loaded {len(unresolved_blockers)} unresolved blockers from Coda")
+                    print(f"🔍 DEBUG: Total tracked blockers after loading: {len(self.tracked_blockers)}")
+                    print(f"🔍 DEBUG: Sample blocker data: {list(self.tracked_blockers.values())[:2] if self.tracked_blockers else 'None'}")
                 except Exception as e:
                     print(f"❌ Error loading unresolved blockers from Coda: {e}")
             
@@ -731,8 +785,11 @@ class DailyStandupBot:
             followup_count = 0
             current_time_naive = current_time.replace(tzinfo=None)
             
+            print(f"🔍 DEBUG: Checking {len(self.tracked_blockers)} tracked blockers for followup...")
+            
             for blocker_id, blocker_info in self.tracked_blockers.items():
                 if blocker_info['followup_sent']:
+                    print(f"🔍 DEBUG: Blocker {blocker_info['user_name']} - {blocker_info['kr_name']} already had followup sent")
                     continue
                 
                 # Ensure blocker datetime is timezone-naive for comparison
@@ -751,6 +808,8 @@ class DailyStandupBot:
                     self.send_blocker_followup(blocker_info)
                     blocker_info['followup_sent'] = True
                     followup_count += 1
+                else:
+                    print(f"🔍 DEBUG: Blocker {blocker_info['user_name']} - {blocker_info['kr_name']} is only {hours_old:.1f} hours old, needs {self.BLOCKER_FOLLOWUP_DELAY_HOURS} hours")
             
             if followup_count > 0:
                 print(f"✅ Sent {followup_count} blocker followup(s)")
@@ -761,19 +820,22 @@ class DailyStandupBot:
             print(f"❌ Error checking blocker followups: {e}")
 
     def send_blocker_followup(self, blocker_info):
-        """Send 24-hour follow-up message for a blocker."""
+        """Send 24-hour follow-up message to the original person who made the blocker."""
         try:
             user_id = blocker_info['user_id']
             user_name = blocker_info['user_name']
             kr_name = blocker_info['kr_name']
             channel_id = blocker_info['channel_id'] or self.channel_id
             
+            # Send reminder to the original person who made the blocker
+            reminder_text = f"⏰ *24-Hour Blocker Follow-up*\n\nYou reported a blocker for *{kr_name}* 24 hours ago. How's it going?"
+            
             blocks = [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"⏰ *24-Hour Blocker Follow-up*\n\nHi <@{user_id}>, it's been 24 hours since you reported a blocker for *{kr_name}*. How's it going?"
+                        "text": reminder_text
                     }
                 },
                 {
@@ -782,56 +844,26 @@ class DailyStandupBot:
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Resolved"},
-                            "action_id": "blocker_resolved",
+                            "action_id": "blocker_resolved_24hr",
                             "value": f"{user_id}_{kr_name}",
                             "style": "primary"
                         },
                         {
                             "type": "button",
-                            "text": {"type": "plain_text", "text": "Still Blocked"},
-                            "action_id": "blocker_still_blocked",
-                            "value": f"{user_id}_{kr_name}"
-                        },
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Need More Help"},
-                            "action_id": "blocker_need_help",
+                            "text": {"type": "plain_text", "text": "Re-escalate"},
+                            "action_id": "blocker_reescalate_24hr",
                             "value": f"{user_id}_{kr_name}"
                         }
                     ]
                 }
             ]
             
-            # Try to send as DM first
-            dm_result = self.send_dm(user_id, "", blocks=blocks)
-            
-            if dm_result is None:
-                # DM failed, send to escalation channel as fallback
-                print(f"⚠️ DM failed for {user_name}, sending to escalation channel as fallback")
-                fallback_text = f"⏰ *24-Hour Blocker Follow-up*\n\n<@{user_id}>, it's been 24 hours since you reported a blocker for *{kr_name}*. How's it going?"
-                
-                try:
-                    escalation_channel = f"#{self.config.SLACK_ESCALATION_CHANNEL}" if self.config.SLACK_ESCALATION_CHANNEL else self.channel_id
-                    self.client.chat_postMessage(
-                        channel=escalation_channel,
-                        text=fallback_text,
-                        blocks=blocks
-                    )
-                    print(f"✅ Sent blocker followup to escalation channel for {user_name}")
-                except Exception as fallback_error:
-                    print(f"❌ Fallback to escalation channel also failed: {fallback_error}")
-                    # Last resort: send to general channel
-                    try:
-                        self.client.chat_postMessage(
-                            channel="#general",
-                            text=fallback_text,
-                            blocks=blocks
-                        )
-                        print(f"✅ Sent blocker followup to #general for {user_name}")
-                    except Exception as general_error:
-                        print(f"❌ All fallback methods failed: {general_error}")
-            else:
-                print(f"✅ Sent blocker followup to {user_name}")
+            # Send DM to the original user
+            try:
+                self.send_dm(user_id, reminder_text, blocks=blocks)
+                print(f"✅ Sent 24-hour blocker reminder to {user_name} for {kr_name}")
+            except Exception as dm_error:
+                print(f"⚠️ Could not send 24-hour reminder DM: {dm_error}")
                 
         except Exception as e:
             print(f"❌ Error sending blocker followup: {e}")
@@ -1014,7 +1046,7 @@ class DailyStandupBot:
             # Set up scheduler
             schedule.every().day.at("09:00").do(self.send_standup_to_all_users)
             schedule.every().day.at("09:00").do(self.send_health_check_to_all_users)
-            schedule.every(2).minutes.do(self.check_blocker_followups)  # Every 2 minutes for testing
+            schedule.every(1).minute.do(self.check_blocker_followups)  # Every 1 minute for testing
             
             # Start scheduler in background thread
             scheduler_thread = threading.Thread(target=self._run_scheduler, daemon=True)
@@ -1022,7 +1054,8 @@ class DailyStandupBot:
             
             print("✅ Bot started successfully!")
             print("📅 Daily standup and health check scheduled for 9:00 AM")
-            print("⏰ Blocker followup check scheduled every 2 minutes (for testing)")
+            print("⏰ Blocker followup check scheduled every 1 minute (for testing)")
+            print("⏰ 24-hour followup delay set to 2 minutes for testing")
             print("🤖 Auto-role assignment completed on startup")
             
         except Exception as e:
@@ -2773,6 +2806,8 @@ class DailyStandupBot:
             print(f"Error getting KR progress from Coda: {e}")
             return None
 
+    # Removed sync_pending_resolutions method - everything goes directly to Coda
+
     def view_blocker_details(self, blocker_id, channel_id, message_ts):
         """Show detailed information about a blocker in a thread or update existing thread."""
         try:
@@ -3191,3 +3226,220 @@ class DailyStandupBot:
         if data_type == 'all' or data_type == 'blocker':
             if hasattr(self, 'blocker_pending_data'):
                 self.blocker_pending_data.pop(user_id, None)
+
+    def run(self):
+        """Run the bot in Socket Mode or start scheduled tasks for webhook mode."""
+        if self.socket_mode and self.socket_client:
+            print("🚀 Starting bot in Socket Mode...")
+            try:
+                # Start the bot's scheduled tasks
+                self.start()
+                
+                print("🔌 Starting Socket Mode client...")
+                # Start Socket Mode client - use the correct method
+                try:
+                    # Try the correct method for SocketModeClient
+                    if hasattr(self.socket_client, 'start'):
+                        self.socket_client.start()
+                    elif hasattr(self.socket_client, 'connect'):
+                        self.socket_client.connect()
+                    else:
+                        print("⚠️ SocketModeClient doesn't have start() or connect() method")
+                        return
+                    print("✅ Bot running in Socket Mode")
+                except Exception as e:
+                    print(f"❌ Error starting Socket Mode client: {e}")
+                    return
+                
+                print("🔍 Bot is now listening for Slack events...")
+                print("🔍 Keep this terminal open - the bot is running!")
+                
+                # Keep the main thread alive
+                try:
+                    while True:
+                        time.sleep(1)
+                        # Check if we should exit
+                        if not hasattr(self.socket_client, 'is_connected') or not self.socket_client.is_connected():
+                            print("🔍 Socket Mode connection lost, exiting...")
+                            break
+                except KeyboardInterrupt:
+                    print("\n🔍 Bot stopped by user (Ctrl+C)")
+                    if hasattr(self.socket_client, 'close'):
+                        self.socket_client.close()
+                    print("✅ Bot shutdown complete")
+            except Exception as e:
+                print(f"❌ Error starting Socket Mode: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("🚀 Starting bot in Webhook Mode...")
+            # Start the bot's scheduled tasks
+            self.start()
+            print("✅ Bot scheduled tasks started (webhook mode)")
+
+    def handle_socket_mode_request(self, client: SocketModeClient, req: SocketModeRequest):
+        """Handle Socket Mode requests from Slack."""
+        try:
+            if req.type == "events_api":
+                # Handle events API payload
+                payload = req.payload
+                event_type = payload.get("event", {}).get("type")
+                
+                if event_type == "message":
+                    # Handle message events
+                    self.handle_message_event(payload)
+                elif event_type == "app_mention":
+                    # Handle app mention events
+                    self.handle_app_mention_event(payload)
+                
+                # Acknowledge the request
+                client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+                
+            elif req.type == "slash_commands":
+                # Handle slash commands
+                payload = req.payload
+                self.handle_slash_command(payload)
+                
+                # Acknowledge the request
+                client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+                
+            elif req.type == "interactive":
+                # Handle interactive components (buttons, modals)
+                payload = req.payload
+                self.handle_interactive_component(payload)
+                
+                # Acknowledge the request
+                client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+                
+            elif req.type == "view_submission":
+                # Handle modal submissions
+                payload = req.payload
+                print(f"🔍 DEBUG: Socket Mode received view_submission: {payload.get('type', 'unknown')}")
+                
+                # Route to the view submission handler
+                from .events import handle_view_submission
+                result = handle_view_submission(self, payload)
+                
+                # Acknowledge the request
+                client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+            else:
+                print(f"⚠️ Unknown request type: {req.type}")
+                
+        except Exception as e:
+            print(f"❌ Error handling Socket Mode request: {e}")
+            # Still acknowledge the request to prevent Slack from retrying
+            try:
+                client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+            except Exception as ack_error:
+                print(f"❌ Error acknowledging request: {ack_error}")
+
+    def handle_message_event(self, payload):
+        """Handle message events from Socket Mode."""
+        try:
+            # Extract event data
+            event = payload.get("event", {})
+            user_id = event.get("user")
+            text = event.get("text", "")
+            channel_id = event.get("channel")
+            
+            # Handle different message types
+            if text.startswith("!"):
+                # Handle exclamation commands
+                self.handle_exclamation_command(user_id, text, channel_id)
+            elif "blocker" in text.lower() or "blocked" in text.lower():
+                # Handle blocker-related messages
+                # For now, just send a helpful message since this is a legacy feature
+                self.send_dm(user_id, "💡 To report a blocker, use `/blocked` command. To view your blockers, use `/blocker` command.")
+                
+        except Exception as e:
+            print(f"❌ Error handling message event: {e}")
+
+    def handle_app_mention_event(self, payload):
+        """Handle app mention events from Socket Mode."""
+        try:
+            # Import command handlers
+            from .commands import _handle_help_command, _handle_blocker_command, _handle_kr_command
+            
+            # Extract event data
+            event = payload.get("event", {})
+            user_id = event.get("user")
+            text = event.get("text", "")
+            channel_id = event.get("channel")
+            
+            # Handle app mentions
+            if "help" in text.lower():
+                _handle_help_command(self, user_id, channel_id)
+            elif "blocked" in text.lower():
+                _handle_blocker_command(self, user_id, channel_id)
+            elif "kr" in text.lower():
+                _handle_kr_command(self, user_id, text, channel_id)
+                
+        except Exception as e:
+            print(f"❌ Error handling app mention event: {e}")
+
+    def handle_slash_command(self, payload):
+        """Handle slash commands from Socket Mode."""
+        try:
+            # Import command handlers
+            from .commands import (
+                _handle_help_command, _handle_kr_command, _handle_blocker_command, _handle_blocked_command,
+                _handle_autorole_command, _handle_role_command, _handle_rolelist_command,
+                _handle_checkin_command, _handle_health_command, _handle_test_standup_command,
+                _handle_test_health_command
+            )
+            
+            # Extract command data
+            user_id = payload.get("user_id")
+            command = payload.get("command")
+            text = payload.get("text", "")
+            channel_id = payload.get("channel_id")
+            
+            # Route to appropriate command handler
+            # Remove the leading slash if present
+            clean_command = command.lstrip('/') if command else ""
+            
+            if clean_command == "autorole":
+                result = _handle_autorole_command(self, user_id, text, channel_id)
+            elif clean_command == "role":
+                result = _handle_role_command(self, user_id, text, channel_id)
+            elif clean_command == "kr":
+                result = _handle_kr_command(self, user_id, text, channel_id)
+            elif clean_command == "blocked":
+                result = _handle_blocked_command(self, user_id, channel_id)
+            elif clean_command == "blocker":
+                result = _handle_blocker_command(self, user_id, channel_id)
+            elif clean_command == "help":
+                result = _handle_help_command(self, user_id, channel_id)
+            elif clean_command == "rolelist":
+                result = _handle_rolelist_command(self, user_id, channel_id)
+            elif clean_command == "checkin":
+                result = _handle_checkin_command(self, user_id, channel_id)
+            elif clean_command == "health":
+                result = _handle_health_command(self, user_id, channel_id)
+            elif clean_command == "teststandup":
+                result = _handle_test_standup_command(self, user_id, channel_id)
+            elif clean_command == "testhealth":
+                result = _handle_test_health_command(self, user_id, channel_id)
+            else:
+                print(f"⚠️ Unknown command: {command}")
+                result = False
+                
+            return result
+                
+        except Exception as e:
+            print(f"❌ Error handling slash command: {e}")
+            traceback.print_exc()
+
+    def handle_interactive_component(self, payload):
+        """Handle interactive components from Socket Mode."""
+        try:
+            # Import the interactive component handler from events module
+            from .events import handle_interactive_components
+            
+            # Route the interactive component to the existing handler
+            result = handle_interactive_components(self, payload)
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error handling interactive component: {e}")
+            return False
